@@ -1,0 +1,6 @@
+.venv
+.env
+__pycache__
+databaseManager/__pycache__
+errors/__pycache__
+app.log
