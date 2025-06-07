@@ -1,6 +1,7 @@
+.vscode
 .venv
 .env
 __pycache__
-databaseManager/__pycache__
-errors/__pycache__
+*/__pycache__
 app.log
+Makefile.dev

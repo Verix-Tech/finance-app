@@ -1,8 +1,11 @@
 import logging
+import asyncio
 from os import getenv
 from sqlalchemy.exc import DataError, ProgrammingError, StatementError
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
+from typing import Union
+from functools import partial
 
 from databaseManager.connector import DatabaseManager
 from databaseManager.inserter import Inserter
@@ -15,6 +18,11 @@ DATABASE_ERROR_MESSAGE = "erro ao inserir dados, verifique a consulta"
 SYNTAX_ERROR_MESSAGE = "erro de sintaxe, verifique se os valores estão de acordo com o schema da tabela"
 NO_SUBSCRIPTION_MESSAGE = "cliente sem assinatura"
 CLIENT_NOT_EXISTS_MESSAGE = "cliente não está cadastrado"
+DATABASE_ENDPOINT = getenv("DATABASE_ENDPOINT")
+DATABASE_URL= getenv("DATABASE_URL")
+DATABASE_USERNAME = getenv("DATABASE_USERNAME")
+DATABASE_PASSWORD = getenv("DATABASE_PASSWORD") 
+DATABASE_PORT= getenv("DATABASE_PORT")
 
 def configure_logging():
     logging.basicConfig(
@@ -33,17 +41,32 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-db_manager = DatabaseManager(
-    getenv("DATABASE_ENDPOINT"),
-    getenv("DATABASE_URL"), 
-    getenv("DATABASE_USERNAME"), 
-    getenv("DATABASE_PASSWORD"), 
-    getenv("DATABASE_PORT")
-)
-db_manager.checkConnection() 
+db_manager = DatabaseManager()
+db_manager.checkConnection()
+
+# Implementar depois
+# async def async_check_connection(db_manager):
+#     loop = asyncio.get_event_loop()
+
+#     return await loop.run_in_executor(None, db_manager.checkConnection)
+
+# async def test_connection():
+#     while True:
+#         is_connected = await async_check_connection(db_manager)
+#         if is_connected:
+#             logging.info("Conexão com o banco estabelecida com sucesso!")
+#             break
+        
+#         logging.info("Aguardando conexão com o banco...")
+#         await asyncio.sleep(10)
+
+# asyncio.run(test_connection())
 
 # Helper functions to resume code
-def create_error_response(message: str, error_detail: str = None, status_code: int = status.HTTP_502_BAD_GATEWAY):
+def create_error_response(
+    message: str,
+    error_detail: Union[DataError, ProgrammingError, StatementError, SubscriptionError, ClientNotExistsError], 
+    status_code: int = status.HTTP_502_BAD_GATEWAY):
     content = {"error": message}
     if error_detail:
         content["message"] = str(error_detail)
@@ -85,9 +108,9 @@ async def createUser(request: Request):
     except (ProgrammingError, StatementError) as e:
         logger.error(DATABASE_ERROR_MESSAGE)
         return create_error_response(DATABASE_ERROR_MESSAGE, e)
-    except SubscriptionError:
+    except SubscriptionError as e:
         logger.error(NO_SUBSCRIPTION_MESSAGE)
-        return create_error_response(NO_SUBSCRIPTION_MESSAGE, status_code=status.HTTP_403_FORBIDDEN)
+        return create_error_response(NO_SUBSCRIPTION_MESSAGE, e, status_code=status.HTTP_403_FORBIDDEN)
 
 @app.post("/create-transaction")
 async def createTransaction(request: Request):
@@ -107,15 +130,15 @@ async def createTransaction(request: Request):
             message=f"Transação criada para o cliente: {inserter.clientId}!"
         )
     
-    except ClientNotExistsError:
+    except ClientNotExistsError as e:
         logger.error(CLIENT_NOT_EXISTS_MESSAGE)
-        return create_error_response(CLIENT_NOT_EXISTS_MESSAGE)
+        return create_error_response(CLIENT_NOT_EXISTS_MESSAGE, e)
     except (ProgrammingError, StatementError) as e:
         logger.error(DATABASE_ERROR_MESSAGE)
         return create_error_response(DATABASE_ERROR_MESSAGE, e)
-    except SubscriptionError:
+    except SubscriptionError as e:
         logger.error(NO_SUBSCRIPTION_MESSAGE)
-        return create_error_response(NO_SUBSCRIPTION_MESSAGE, status_code=status.HTTP_403_FORBIDDEN)
+        return create_error_response(NO_SUBSCRIPTION_MESSAGE, e, status_code=status.HTTP_403_FORBIDDEN)
     
 @app.post("/grant-subscription")
 async def grantSubscription(request: Request):
@@ -129,18 +152,18 @@ async def grantSubscription(request: Request):
             message=f"Assinatura criada para o cliente: {inserter.clientId}!"
         )
     
-    except ClientNotExistsError:
+    except ClientNotExistsError as e:
         logger.error(CLIENT_NOT_EXISTS_MESSAGE)
-        return create_error_response(CLIENT_NOT_EXISTS_MESSAGE)
+        return create_error_response(CLIENT_NOT_EXISTS_MESSAGE, e)
     except DataError as e:
         logger.error(SYNTAX_ERROR_MESSAGE)
         return create_error_response(SYNTAX_ERROR_MESSAGE, e)
     except (ProgrammingError, StatementError) as e:
         logger.error(DATABASE_ERROR_MESSAGE)
         return create_error_response(DATABASE_ERROR_MESSAGE, e)
-    except SubscriptionError:
+    except SubscriptionError as e:
         logger.error(NO_SUBSCRIPTION_MESSAGE)
-        return create_error_response(NO_SUBSCRIPTION_MESSAGE, status_code=status.HTTP_403_FORBIDDEN)
+        return create_error_response(NO_SUBSCRIPTION_MESSAGE, e, status_code=status.HTTP_403_FORBIDDEN)
     
 @app.post("/revoke-subscription")
 async def revoke_subscription(request: Request):
@@ -154,15 +177,15 @@ async def revoke_subscription(request: Request):
             message=f"Assinatura revogada para o cliente: {inserter.clientId}!"
         )
     
-    except ClientNotExistsError:
+    except ClientNotExistsError as e:
         logger.error(CLIENT_NOT_EXISTS_MESSAGE)
-        return create_error_response(CLIENT_NOT_EXISTS_MESSAGE)
+        return create_error_response(CLIENT_NOT_EXISTS_MESSAGE, e)
     except DataError as e:
         logger.error(SYNTAX_ERROR_MESSAGE)
         return create_error_response(SYNTAX_ERROR_MESSAGE, e)
     except (ProgrammingError, StatementError) as e:
         logger.error(DATABASE_ERROR_MESSAGE)
         return create_error_response(DATABASE_ERROR_MESSAGE, e)
-    except SubscriptionError:
+    except SubscriptionError as e:
         logger.error(NO_SUBSCRIPTION_MESSAGE)
-        return create_error_response(NO_SUBSCRIPTION_MESSAGE, status_code=status.HTTP_403_FORBIDDEN)
+        return create_error_response(NO_SUBSCRIPTION_MESSAGE, e, status_code=status.HTTP_403_FORBIDDEN)

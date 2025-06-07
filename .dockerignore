@@ -6,3 +6,6 @@ errors/__pycache__
 sql
 .env
 app.log
+Makefile.dev
+README.md
+deploy.sh

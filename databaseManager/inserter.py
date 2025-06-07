@@ -1,9 +1,7 @@
 import hashlib
 import logging
 from errors.errors import SubscriptionError, ClientNotExistsError
-from databaseManager.connector import DatabaseManager
 from datetime import datetime
-from os import getenv
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from pytz import timezone
@@ -28,7 +26,6 @@ class Inserter:
         self.timezone = timezone("America/Sao_Paulo")
         self.clientId = clientId
         self.clientIdEncrypted = self.encryptData(clientId)
-        self.test_type = type(self.encryptData(clientId))
         self.customersTableId = "clients"
         self.transactionsTableId = "transactions"
 
@@ -46,13 +43,13 @@ class Inserter:
 
         self.session.execute(text(f"""
                 UPDATE {self.customersTableId}
-                SET subscription_start_timestamp = :subscription_start_timestamp, subscription_end_timestamp = :subscription_end_timestamp, subscribed = :subscribed, updated_at = :updated_at
+                SET subs_start_timestamp = :subs_start_timestamp, subs_end_timestamp = :subs_end_timestamp, subscribed = :subscribed, updated_at = :updated_at
                 WHERE client_id='{self.clientIdEncrypted}'
             """),
             {
                 "updated_at": datetime.now(self.timezone),
-                "subscription_start_timestamp": datetime.now(self.timezone),
-                "subscription_end_timestamp": datetime.now(self.timezone) + relativedelta(months=subscription_months),
+                "subs_start_timestamp": datetime.now(self.timezone),
+                "subs_end_timestamp": datetime.now(self.timezone) + relativedelta(months=subscription_months),
                 "subscribed": True
             })
         self.session.commit()
@@ -81,28 +78,30 @@ class Inserter:
             FROM {self.customersTableId}
             WHERE
                 client_id = '{self.clientIdEncrypted}'
-        """)).first()[0]
+        """)).first()
 
-        return True
+        if result[0] is None:
+            return False
+        return True is not None
     
-    def checkClientSubscription(self) -> None:
+    def checkClientSubscription(self) -> bool:
         result = self.session.execute(text(f"""
             SELECT
                 subscribed
             FROM {self.customersTableId}
             WHERE
                 client_id = '{self.clientIdEncrypted}'
-        """)).first()[0]
+        """)).first()
         
-        if result == True:
-            return
-        raise SubscriptionError
+        if result[0] is None or not result[0]:
+            raise SubscriptionError
+        return True
 
     def insertTransactionData(self, transaction_revenue: str, payment_method_name: str, payment_location: str, payment_product: str) -> None:
         try:
             self.checkIfClientExists()
         except TypeError:
-            raise ClientNotExistsError
+            ...
         else:
             self.checkClientSubscription()
 
@@ -151,15 +150,4 @@ class Inserter:
 
 
 if __name__ == "__main__":
-    connection_string = getenv("DATABASE_URL")
-    db_manager = DatabaseManager(connection_string, getenv("DATABASE_USERNAME"), getenv("DATABASE_PASSWORD"), getenv("DATABASE_PORT"))
-    db_manager.checkConnection()
-
-    _timezone = timezone("America/Sao_Paulo")
-
-    inserter = Inserter(db_manager.getSession(), clientId="3")
-    # print(inserter.checkClientSubscription())
-    inserter.upsertClientData("jonatan", datetime.now(_timezone), True)
-    # inserter.insertTransactionData(10, 1, "americanas")
-
-    db_manager.shutdown()
+    ...
