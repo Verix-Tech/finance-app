@@ -9,3 +9,4 @@ app.log
 Makefile.dev
 README.md
 deploy.sh
+sql/secrets/*
