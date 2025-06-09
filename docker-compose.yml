@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:latest
+    container_name: postgres_container
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jvict -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      POSTGRES_USER: jvict
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_pass
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - finance_network
+    secrets:
+      - postgres_pass
+    restart: unless-stopped
+
+  finance-api:
+    build:
+      context: .
+    image: finance-api:v0.0.3c
+    container_name: finance_api_container
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE: postgres
+      DATABASE_ENDPOINT: postgres
+      DATABASE_USERNAME: jvict
+      DATABASE_PASSWORD: /run/secrets/postgres_pass
+      DATABASE_PORT: 5432
+    ports:
+      - "8000:8000"
+    networks:
+      - finance_network
+    secrets:
+      - postgres_pass
+
+volumes:
+  postgres_data:
+
+networks:
+  finance_network:
+    driver: bridge
+
+secrets:
+  postgres_pass:
+    file: ./sql/secrets/user_credentials.txt
