@@ -80,9 +80,9 @@ class Inserter:
                 client_id = '{self.clientIdEncrypted}'
         """)).first()
 
-        if result[0] is None:
-            return False
-        return True is not None
+        if result is None or not result[0]:
+            raise ClientNotExistsError
+        return True
     
     def checkClientSubscription(self) -> bool:
         result = self.session.execute(text(f"""
@@ -93,15 +93,15 @@ class Inserter:
                 client_id = '{self.clientIdEncrypted}'
         """)).first()
         
-        if result[0] is None or not result[0]:
+        if result is None or not result[0]:
             raise SubscriptionError
         return True
 
     def insertTransactionData(self, transaction_revenue: str, payment_method_name: str, payment_location: str, payment_product: str) -> None:
         try:
             self.checkIfClientExists()
-        except TypeError:
-            ...
+        except ClientNotExistsError:
+            raise ClientNotExistsError
         else:
             self.checkClientSubscription()
 
@@ -125,7 +125,7 @@ class Inserter:
     def upsertClientData(self, name: str) -> None:
         try:
             self.checkIfClientExists()
-        except TypeError:
+        except ClientNotExistsError:
             ...
         else:
             self.checkClientSubscription()
