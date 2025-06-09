@@ -18,12 +18,15 @@ logger = logging.getLogger(__file__)
 logger = logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 logger = logging.getLogger("psycopg2").setLevel(logging.ERROR)
 
+# Database constants
+with open(os.getenv("DATABASE_PASSWORD")) as file:
+    PASSWORD = quote_plus(str(file.read()))
 USERNAME = os.getenv("DATABASE_USERNAME")
-PASSWORD = quote_plus(str(os.getenv("DATABASE_PASSWORD")))
 ENDPOINT = os.getenv("DATABASE_ENDPOINT")
 PORT = os.getenv("DATABASE_PORT")
+DATABASE = os.getenv("DATABASE")
 
-connection_string = f"postgresql://{USERNAME}:{PASSWORD}@{ENDPOINT}:{PORT}/postgres"
+connection_string = f"postgresql://{USERNAME}:{PASSWORD}@{ENDPOINT}:{PORT}/{DATABASE}"
 
 class DatabaseManager:
     def __init__(self) -> None:
