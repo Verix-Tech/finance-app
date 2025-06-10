@@ -4,5 +4,6 @@
 __pycache__
 */__pycache__
 app.log
+database_health.log
 Makefile.dev
 sql/secrets/*

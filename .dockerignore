@@ -6,6 +6,7 @@ errors/__pycache__
 sql
 .env
 app.log
+database_health.log
 Makefile.dev
 README.md
 deploy.sh
