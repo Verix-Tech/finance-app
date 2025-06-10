@@ -25,7 +25,7 @@ services:
   finance-api:
     build:
       context: .
-    image: finance-api:v0.0.3c
+    image: finance-api:v0.0.4a
     container_name: finance_api_container
     depends_on:
       postgres:
