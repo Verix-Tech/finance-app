@@ -1,153 +1,275 @@
 import hashlib
 import logging
-from errors.errors import SubscriptionError, ClientNotExistsError
 from datetime import datetime
+from typing import Optional
+
+from dateutil.relativedelta import relativedelta
+from pytz import timezone
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from pytz import timezone
-from dateutil.relativedelta import relativedelta
+
+from errors.errors import SubscriptionError, ClientNotExistsError
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("app.log"),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__file__).setLevel(logging.ERROR)
-logger = logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
-logger = logging.getLogger("psycopg2").setLevel(logging.ERROR)
-
-class Inserter:
-    def __init__(self, session: Session, clientId: str) -> None:
+class DataInserter:
+    """Handles database operations for client subscriptions and transactions."""
+    
+    def __init__(self, session: Session, client_id: str) -> None:
+        """
+        Initialize the DataInserter.
+        
+        Args:
+            session: SQLAlchemy database session
+            client_id: The client identifier
+        """
         self.session = session
         self.timezone = timezone("America/Sao_Paulo")
-        self.clientId = clientId
-        self.clientIdEncrypted = self.encryptData(clientId)
-        self.customersTableId = "clients"
-        self.transactionsTableId = "transactions"
-
-    def encryptData(self, data) -> str:
-        encryptedData = hashlib.sha1()
-        encryptedData.update(data.encode("utf-8"))
-
-        return encryptedData.hexdigest()
-    
-    def grantSubscription(self, subscription_months: int) -> None:
-        try:
-            self.checkIfClientExists()
-        except TypeError:
-            raise ClientNotExistsError
-
-        self.session.execute(text(f"""
-                UPDATE {self.customersTableId}
-                SET subs_start_timestamp = :subs_start_timestamp, subs_end_timestamp = :subs_end_timestamp, subscribed = :subscribed, updated_at = :updated_at
-                WHERE client_id='{self.clientIdEncrypted}'
-            """),
-            {
-                "updated_at": datetime.now(self.timezone),
-                "subs_start_timestamp": datetime.now(self.timezone),
-                "subs_end_timestamp": datetime.now(self.timezone) + relativedelta(months=subscription_months),
-                "subscribed": True
-            })
-        self.session.commit()
-
-    def revogeSubscription(self) -> None:
-        try:
-            self.checkIfClientExists()
-        except TypeError:
-            raise ClientNotExistsError
-
-        self.session.execute(text(f"""
-                UPDATE {self.customersTableId}
-                SET subscribed = :subscribed, updated_at = :updated_at
-                WHERE client_id='{self.clientIdEncrypted}'
-            """),
-            {
-                "updated_at": datetime.now(self.timezone),
-                "subscribed": False
-            })
-        self.session.commit()
-
-    def checkIfClientExists(self) -> bool:
-        result = self.session.execute(text(f"""
-            SELECT
-                client_id
-            FROM {self.customersTableId}
-            WHERE
-                client_id = '{self.clientIdEncrypted}'
-        """)).first()
-
-        if result is None or not result[0]:
-            raise ClientNotExistsError
-        return True
-    
-    def checkClientSubscription(self) -> bool:
-        result = self.session.execute(text(f"""
-            SELECT
-                subscribed
-            FROM {self.customersTableId}
-            WHERE
-                client_id = '{self.clientIdEncrypted}'
-        """)).first()
+        self.client_id = client_id
+        self.client_id_encrypted = self._encrypt_data(client_id)
+        self.customers_table = "clients"
+        self.transactions_table = "transactions"
         
-        if result is None or not result[0]:
-            raise SubscriptionError
+        # Configure logging
+        self._configure_logging()
+    
+    @staticmethod
+    def _configure_logging() -> None:
+        """Configure logging settings."""
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler("app.log"),
+                logging.StreamHandler()
+            ]
+        )
+        # Reduce noise from libraries
+        logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
+        logging.getLogger("psycopg2").setLevel(logging.ERROR)
+    
+    @staticmethod
+    def _encrypt_data(data: str) -> str:
+        """
+        Encrypt data using SHA-1 hashing.
+        
+        Args:
+            data: The data to encrypt
+            
+        Returns:
+            The hexadecimal digest of the hashed data
+        """
+        hasher = hashlib.sha1()
+        hasher.update(data.encode("utf-8"))
+        return hasher.hexdigest()
+    
+    def _execute_update(self, table: str, set_values: dict, where_condition: str) -> None:
+        """
+        Execute a parameterized UPDATE query.
+        
+        Args:
+            table: The table to update
+            set_values: Dictionary of column-value pairs to set
+            where_condition: The WHERE clause condition
+        """
+        set_clause = ", ".join(f"{k} = :{k}" for k in set_values.keys())
+        query = text(
+            f"UPDATE {table} "
+            f"SET {set_clause} "
+            f"WHERE {where_condition}"
+        )
+        self.session.execute(query, set_values)
+        self.session.commit()
+    
+    def _execute_insert(self, table: str, values: dict) -> None:
+        """
+        Execute a parameterized INSERT query.
+        
+        Args:
+            table: The table to insert into
+            values: Dictionary of column-value pairs to insert
+        """
+        columns = ", ".join(values.keys())
+        placeholders = ", ".join(f":{k}" for k in values.keys())
+        query = text(
+            f"INSERT INTO {table} ({columns}) "
+            f"VALUES ({placeholders})"
+        )
+        self.session.execute(query, values)
+        self.session.commit()
+    
+    def _client_exists(self) -> bool:
+        """
+        Check if the client exists in the database.
+        
+        Returns:
+            True if client exists, raises ClientNotExistsError otherwise
+            
+        Raises:
+            ClientNotExistsError: If client doesn't exist
+        """
+        query = text(
+            f"SELECT client_id FROM {self.customers_table} "
+            f"WHERE client_id = :client_id"
+        )
+        result = self.session.execute(
+            query,
+            {"client_id": self.client_id_encrypted}
+        ).first()
+        
+        if not result:
+            raise ClientNotExistsError(f"Client {self.client_id} not found")
         return True
-
-    def insertTransactionData(self, transaction_revenue: str, payment_method_name: str, payment_location: str, payment_product: str) -> None:
-        try:
-            self.checkIfClientExists()
-        except ClientNotExistsError:
-            raise ClientNotExistsError
-        else:
-            self.checkClientSubscription()
-
-        _transaction_id = self.encryptData(data=f"{self.clientId}:{datetime.now(self.timezone)}:{transaction_revenue}:{payment_method_name}")
-
-        self.session.execute(text(f"""
-            INSERT INTO {self.transactionsTableId} (transaction_timestamp, client_id, transaction_id, transaction_revenue, payment_method_name, payment_location, payment_product)
-            VALUES (:transaction_timestamp, :client_id, :transaction_id, :transaction_revenue, :payment_method_name, :payment_location, :payment_product)
-        """),
-        {
+    
+    def _has_active_subscription(self) -> bool:
+        """
+        Check if client has an active subscription.
+        
+        Returns:
+            True if subscription is active, raises SubscriptionError otherwise
+            
+        Raises:
+            SubscriptionError: If subscription is not active
+        """
+        query = text(
+            f"SELECT subscribed FROM {self.customers_table} "
+            f"WHERE client_id = :client_id"
+        )
+        result = self.session.execute(
+            query,
+            {"client_id": self.client_id_encrypted}
+        ).first()
+        
+        if not result or not result[0]:
+            raise SubscriptionError(f"Client {self.client_id} has no active subscription")
+        return True
+    
+    def grant_subscription(self, subscription_months: int) -> None:
+        """
+        Grant or extend a client's subscription.
+        
+        Args:
+            subscription_months: Number of months to extend subscription
+            
+        Raises:
+            ClientNotExistsError: If client doesn't exist
+        """
+        self._client_exists()
+        
+        update_values = {
+            "updated_at": datetime.now(self.timezone),
+            "subs_start_timestamp": datetime.now(self.timezone),
+            "subs_end_timestamp": datetime.now(self.timezone) + relativedelta(months=subscription_months),
+            "subscribed": True
+        }
+        
+        self._execute_update(
+            table=self.customers_table,
+            set_values=update_values,
+            where_condition=f"client_id = '{self.client_id_encrypted}'"
+        )
+    
+    def revoke_subscription(self) -> None:
+        """
+        Revoke a client's subscription.
+        
+        Raises:
+            ClientNotExistsError: If client doesn't exist
+        """
+        self._client_exists()
+        
+        update_values = {
+            "updated_at": datetime.now(self.timezone),
+            "subscribed": False
+        }
+        
+        self._execute_update(
+            table=self.customers_table,
+            set_values=update_values,
+            where_condition=f"client_id = '{self.client_id_encrypted}'"
+        )
+    
+    def insert_transaction(
+        self,
+        transaction_revenue: str,
+        payment_method_name: str,
+        payment_location: str,
+        payment_product: str
+    ) -> None:
+        """
+        Insert a transaction record for the client.
+        
+        Args:
+            transaction_revenue: The transaction amount
+            payment_method_name: Payment method used
+            payment_location: Location of payment
+            payment_product: Product purchased
+            
+        Raises:
+            ClientNotExistsError: If client doesn't exist
+            SubscriptionError: If client has no active subscription
+        """
+        self._client_exists()
+        self._has_active_subscription()
+        
+        transaction_id = self._encrypt_data(
+            f"{self.client_id}:{datetime.now(self.timezone)}:"
+            f"{transaction_revenue}:{payment_method_name}"
+        )
+        
+        transaction_data = {
             "transaction_timestamp": datetime.now(self.timezone),
-            "client_id": self.clientIdEncrypted,
-            "transaction_id": _transaction_id,
+            "client_id": self.client_id_encrypted,
+            "transaction_id": transaction_id,
             "transaction_revenue": transaction_revenue,
             "payment_method_name": payment_method_name,
             "payment_location": payment_location,
             "payment_product": payment_product
-        })
-        self.session.commit()
+        }
+        
+        self._execute_insert(
+            table=self.transactions_table,
+            values=transaction_data
+        )
     
-    def upsertClientData(self, name: str) -> None:
-        try:
-            self.checkIfClientExists()
-        except ClientNotExistsError:
-            ...
-        else:
-            self.checkClientSubscription()
+    def upsert_client(self, name: str, phone: str) -> None:
+        """
+        Insert or update client information.
+        
+        Args:
+            name: Client name
+            phone: Client phone number (defaults to client_id if None)
+        Raises:
+            SubscriptionError: If client has no active subscription
+        """
+        try: self._client_exists()
+        except ClientNotExistsError as e: ...
+        else: self._has_active_subscription()
 
-        self.session.execute(text(f"""
-            INSERT INTO {self.customersTableId} (client_id, name, phone, created_at, updated_at)
-            VALUES (:client_id, :name, :phone, :created_at, :updated_at)
-            ON CONFLICT (client_id)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                phone = EXCLUDED.phone,
-                updated_at = EXCLUDED.updated_at
-        """),
-        {
-            "client_id": self.clientIdEncrypted,
-            "name": name,
-            "phone": self.clientId,
-            "created_at": datetime.now(self.timezone),
-            "updated_at": datetime.now(self.timezone)
-        })
+        phone = phone if phone is not None else self.client_id
+        
+        query = text(
+            f"INSERT INTO {self.customers_table} "
+            "(client_id, name, phone, created_at, updated_at) "
+            "VALUES (:client_id, :name, :phone, :created_at, :updated_at) "
+            "ON CONFLICT (client_id) "
+            "DO UPDATE SET "
+            "name = EXCLUDED.name, "
+            "phone = EXCLUDED.phone, "
+            "updated_at = EXCLUDED.updated_at"
+        )
+        
+        self.session.execute(
+            query,
+            {
+                "client_id": self.client_id_encrypted,
+                "name": name,
+                "phone": phone,
+                "created_at": datetime.now(self.timezone),
+                "updated_at": datetime.now(self.timezone)
+            }
+        )
         self.session.commit()
 
 
 if __name__ == "__main__":
-    ...
+    pass
