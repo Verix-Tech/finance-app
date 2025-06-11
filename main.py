@@ -150,17 +150,53 @@ async def create_transaction(request: Request):
         data = await request.json()
         inserter = DataInserter(db_service.get_session(), data["clientId"])
         
-        inserter.insert_transaction(
-            transaction_revenue=data["transactionRevenue"],
-            payment_method_name=data["paymentMethodName"],
-            payment_location=data["paymentLocation"],
-            payment_product=data["paymentProduct"]
+        transaction_data = inserter.insert_transaction(
+            transaction_revenue=data["transaction_revenue"],
+            payment_method_name=data["payment_method_name"],
+            payment_location=data["payment_location"],
+            payment_product=data["payment_product"]
         )
+
+        data["transaction_id"] = transaction_data["transaction_id"]
         
         logger.info("Transaction created successfully")
         return ResponseHandler.create_success(
             data=data,
             message=f"Transaction created for client: {inserter.client_id}!"
+        )
+    
+    except ClientNotExistsError as e:
+        logger.error(AppConfig.CLIENT_NOT_EXISTS)
+        return ResponseHandler.create_error(AppConfig.CLIENT_NOT_EXISTS, e)
+    except (ProgrammingError, StatementError) as e:
+        logger.error(AppConfig.DATABASE_ERROR)
+        return ResponseHandler.create_error(AppConfig.DATABASE_ERROR, e)
+    except SubscriptionError as e:
+        logger.error(AppConfig.NO_SUBSCRIPTION)
+        return ResponseHandler.create_error(
+            AppConfig.NO_SUBSCRIPTION,
+            e,
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+
+@app.post("/update-transaction")
+async def update_transaction(request: Request):
+    """update a new transaction."""
+    try:
+        data = await request.json()
+        inserter = DataInserter(db_service.get_session(), data["clientId"])
+        
+        update_data = {k:v for k,v in data.items() if k not in ["clientId", "transactionId"]}
+
+        transaction_data = inserter.update_transaction(
+            transaction_id=data["transactionId"],
+            data=update_data
+        )
+        
+        logger.info("Transaction updated successfully")
+        return ResponseHandler.create_success(
+            data=data,
+            message=f"Transaction updated for client: {inserter.client_id}!"
         )
     
     except ClientNotExistsError as e:

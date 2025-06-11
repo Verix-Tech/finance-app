@@ -1,7 +1,7 @@
 import hashlib
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from dateutil.relativedelta import relativedelta
 from pytz import timezone
@@ -187,14 +187,37 @@ class DataInserter:
             set_values=update_values,
             where_condition=f"client_id = '{self.client_id_encrypted}'"
         )
-    
+
+    @property
+    def get_transaction_id(self):
+        query = text(f"""
+            SELECT 
+                MAX(transaction_id) 
+            FROM {self.transactions_table}
+            WHERE
+                client_id = :client_id
+        """)
+
+        result = self.session.execute(
+            query,
+            {
+                "client_id": self.client_id_encrypted
+            }
+        ).first()
+        if not result or not result[0]:
+            transaction_id = 1
+        else:
+            transaction_id = result[0] + 1
+        
+        return transaction_id
+
     def insert_transaction(
         self,
-        transaction_revenue: str,
-        payment_method_name: str,
-        payment_location: str,
-        payment_product: str
-    ) -> None:
+        transaction_revenue: float,
+        payment_method_name: Optional[str],
+        payment_location: Optional[str],
+        payment_product: Optional[str]
+    ) -> Dict:
         """
         Insert a transaction record for the client.
         
@@ -211,15 +234,17 @@ class DataInserter:
         self._client_exists()
         self._has_active_subscription()
         
-        transaction_id = self._encrypt_data(
+        _internal_transaction_id = self._encrypt_data(
             f"{self.client_id}:{datetime.now(self.timezone)}:"
-            f"{transaction_revenue}:{payment_method_name}"
+            f"{transaction_revenue}:{payment_method_name}:"
+            f"{payment_location}"
         )
-        
+ 
         transaction_data = {
             "transaction_timestamp": datetime.now(self.timezone),
             "client_id": self.client_id_encrypted,
-            "transaction_id": transaction_id,
+            "internal_transaction_id": _internal_transaction_id,
+            "transaction_id": self.get_transaction_id,
             "transaction_revenue": transaction_revenue,
             "payment_method_name": payment_method_name,
             "payment_location": payment_location,
@@ -230,6 +255,8 @@ class DataInserter:
             table=self.transactions_table,
             values=transaction_data
         )
+
+        return transaction_data
     
     def upsert_client(self, name: str, phone: str) -> None:
         """
@@ -269,6 +296,38 @@ class DataInserter:
             }
         )
         self.session.commit()
+
+    def update_transaction(
+        self,
+        transaction_id: int,
+        data: Dict[str, Any]
+    ) -> Dict:
+        """
+        Update client transaction.
+        
+        Args:
+            transaction_id: Client transaction id to update
+            data: Information in dict format to update
+        Raises:
+            ClientNotExistsError: If client doesn't exist
+            SubscriptionError: If client has no active subscription
+        """
+        try: self._client_exists()
+        except ClientNotExistsError as e: ...
+        else: self._has_active_subscription()
+        
+        update_values = {k: v for k, v in data.items()}
+
+        self._execute_update(
+            table=self.transactions_table,
+            set_values=update_values,
+            where_condition=f"""
+                client_id = '{self.client_id_encrypted}'
+                AND transaction_id = {transaction_id}
+            """
+        )
+
+        return update_values
 
 
 if __name__ == "__main__":
