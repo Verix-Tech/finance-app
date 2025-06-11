@@ -31,12 +31,12 @@ logger = logging.getLogger(__name__)
 sql_dir = 'sql/'
 sql_content = os.listdir(sql_dir)
 
-sql_files = [os.path.join(sql_dir, file) for file in sql_content if os.path.isfile(os.path.join(sql_dir, file))]
+sql_files = [os.path.join(sql_dir, file) for file in sql_content if os.path.isfile(os.path.join(sql_dir, file)) and file != "privileges.sql"]
 
 # Getting a postgresql session
 db_manager = DatabaseManager()
-db_manager.checkConnection()
-db_session = db_manager.getSession()
+db_manager.check_connection()
+db_session = db_manager.get_session()
 
 def create_tables():
     for file in sql_files:
