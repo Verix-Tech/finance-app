@@ -15,3 +15,12 @@ class ClientNotExistsError(Exception):
     
     def __str__(self):
         return f"{self.code}: {self.message}"
+    
+class TransactionNotExistsError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+        self.code = "x000000c"
+    
+    def __str__(self):
+        return f"{self.code}: {self.message}"
