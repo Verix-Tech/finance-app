@@ -8,7 +8,7 @@ from pytz import timezone
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from errors.errors import SubscriptionError, ClientNotExistsError
+from errors.errors import SubscriptionError, ClientNotExistsError, TransactionNotExistsError
 
 
 class DataInserter:
@@ -117,7 +117,7 @@ class DataInserter:
         ).first()
         
         if not result:
-            raise ClientNotExistsError(f"Client {self.client_id} not found")
+            raise ClientNotExistsError(f"Client '{self.client_id}' not found")
         return True
     
     def _has_active_subscription(self) -> bool:
@@ -140,7 +140,30 @@ class DataInserter:
         ).first()
         
         if not result or not result[0]:
-            raise SubscriptionError(f"Client {self.client_id} has no active subscription")
+            raise SubscriptionError(f"Client '{self.client_id}' has no active subscription")
+        return True
+    
+    def _transaction_exists(self, transaction_id) -> bool:
+        """
+        Check if the transaction exists in the database.
+        
+        Returns:
+            True if transaction exists, raises TransactionNotExistsError otherwise
+            
+        Raises:
+            TransactionNotExistsError: If transaction doesn't exist
+        """
+        query = text(
+            f"SELECT client_id FROM {self.transactions_table} "
+            f"WHERE client_id = :client_id AND transaction_id = :transaction_id"
+        )
+        result = self.session.execute(
+            query,
+            {"client_id": self.client_id_encrypted, "transaction_id": transaction_id}
+        ).first()
+        
+        if not result:
+            raise TransactionNotExistsError(f"transaction '{transaction_id}' for client '{self.client_id}' not found")
         return True
     
     def grant_subscription(self, subscription_months: int) -> None:
@@ -312,9 +335,9 @@ class DataInserter:
             ClientNotExistsError: If client doesn't exist
             SubscriptionError: If client has no active subscription
         """
-        try: self._client_exists()
-        except ClientNotExistsError as e: ...
-        else: self._has_active_subscription()
+        self._client_exists()
+        self._transaction_exists(transaction_id)
+        self._has_active_subscription()
         
         update_values = {k: v for k, v in data.items()}
 

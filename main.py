@@ -8,7 +8,7 @@ from sqlalchemy.exc import DataError, ProgrammingError, StatementError
 
 from databaseManager.connector import DatabaseManager, DatabaseMonitor
 from databaseManager.inserter import DataInserter
-from errors.errors import SubscriptionError, ClientNotExistsError
+from errors.errors import SubscriptionError, ClientNotExistsError, TransactionNotExistsError
 
 
 class AppConfig:
@@ -20,6 +20,7 @@ class AppConfig:
     SYNTAX_ERROR = "erro de sintaxe, verifique os valores"
     NO_SUBSCRIPTION = "cliente sem assinatura"
     CLIENT_NOT_EXISTS = "cliente não está cadastrado"
+    TRANSACTION_NOT_EXISTS = "transação não existente"
     
     # Environment variables
     DB_ENDPOINT = getenv("DATABASE_ENDPOINT")
@@ -36,7 +37,7 @@ class ResponseHandler:
     def create_error(
         message: str,
         error_detail: Union[DataError, ProgrammingError, StatementError, 
-                           SubscriptionError, ClientNotExistsError],
+                           SubscriptionError, ClientNotExistsError, TransactionNotExistsError],
         status_code: int = status.HTTP_502_BAD_GATEWAY
     ) -> JSONResponse:
         """Create a standardized error response."""
@@ -202,6 +203,9 @@ async def update_transaction(request: Request):
     except ClientNotExistsError as e:
         logger.error(AppConfig.CLIENT_NOT_EXISTS)
         return ResponseHandler.create_error(AppConfig.CLIENT_NOT_EXISTS, e)
+    except TransactionNotExistsError as e:
+        logger.error(AppConfig.TRANSACTION_NOT_EXISTS)
+        return ResponseHandler.create_error(AppConfig.TRANSACTION_NOT_EXISTS, e)
     except (ProgrammingError, StatementError) as e:
         logger.error(AppConfig.DATABASE_ERROR)
         return ResponseHandler.create_error(AppConfig.DATABASE_ERROR, e)
