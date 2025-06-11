@@ -96,6 +96,25 @@ class DataInserter:
         )
         self.session.execute(query, values)
         self.session.commit()
+
+    def _execute_delete(self, table: str, values: dict) -> None:
+        """
+        Execute a parameterized DELETE query.
+        
+        Args:
+            table: The table to insert into
+            values: Dictionary of column-value pairs to insert
+        """
+        if "client_id" in values.keys():
+            values["client_id"] = self.client_id_encrypted
+        where_condition = "AND ".join(f"{k} = :{k} " for k in values.keys())
+
+        query = text(
+            f"DELETE FROM {table} "
+            f"WHERE {where_condition}"
+        )
+        self.session.execute(query, values)
+        self.session.commit()
     
     def _client_exists(self) -> bool:
         """
@@ -326,7 +345,7 @@ class DataInserter:
         data: Dict[str, Any]
     ) -> Dict:
         """
-        Update client transaction.
+        Update a client transaction.
         
         Args:
             transaction_id: Client transaction id to update
@@ -334,6 +353,7 @@ class DataInserter:
         Raises:
             ClientNotExistsError: If client doesn't exist
             SubscriptionError: If client has no active subscription
+            TransactionNotExistsError: If transaction not exists for the client
         """
         self._client_exists()
         self._transaction_exists(transaction_id)
@@ -351,6 +371,28 @@ class DataInserter:
         )
 
         return update_values
+    
+    def delete_transaction(
+        self,
+        data: Dict[str, Any]
+    ) -> None:
+        """
+        Delete a client transaction.
+        
+        Args:
+            transaction_id: Client transaction id to delete
+        Raises:
+            ClientNotExistsError: If client doesn't exist
+            SubscriptionError: If client has no active subscription
+            TransactionNotExistsError: If transaction not exists for the client
+        """
+        self._client_exists()
+        self._has_active_subscription()
+
+        self._execute_delete(
+            table=self.transactions_table,
+            values=data
+        )
 
 
 if __name__ == "__main__":

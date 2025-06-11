@@ -120,8 +120,8 @@ async def create_user(request: Request):
     """Create or update a user."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["clientId"])
-        inserter.upsert_client(name=data["name"], phone=data["clientId"])
+        inserter = DataInserter(db_service.get_session(), data["client_id"])
+        inserter.upsert_client(name=data["name"], phone=data["client_id"])
         
         logger.info("User data inserted successfully")
         return ResponseHandler.create_success(
@@ -149,7 +149,7 @@ async def create_transaction(request: Request):
     """Create a new transaction."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["clientId"])
+        inserter = DataInserter(db_service.get_session(), data["client_id"])
         
         transaction_data = inserter.insert_transaction(
             transaction_revenue=data["transaction_revenue"],
@@ -185,9 +185,9 @@ async def update_transaction(request: Request):
     """update a new transaction."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["clientId"])
+        inserter = DataInserter(db_service.get_session(), data["client_id"])
         
-        update_data = {k:v for k,v in data.items() if k not in ["clientId", "transactionId"]}
+        update_data = {k:v for k,v in data.items() if k not in ["client_id", "transactionId"]}
 
         transaction_data = inserter.update_transaction(
             transaction_id=data["transactionId"],
@@ -216,6 +216,40 @@ async def update_transaction(request: Request):
             e,
             status_code=status.HTTP_403_FORBIDDEN
         )
+    
+@app.post("/delete-transaction")
+async def delete_transaction(request: Request):
+    """delete a new transaction."""
+    try:
+        data = await request.json()
+        inserter = DataInserter(db_service.get_session(), data["client_id"])
+
+        transaction_data = inserter.delete_transaction(
+            data=data
+        )
+        
+        logger.info("Transaction deleted successfully")
+        return ResponseHandler.create_success(
+            data=data,
+            message=f"Transaction deleted for client: {inserter.client_id}!"
+        )
+    
+    except ClientNotExistsError as e:
+        logger.error(AppConfig.CLIENT_NOT_EXISTS)
+        return ResponseHandler.create_error(AppConfig.CLIENT_NOT_EXISTS, e)
+    except TransactionNotExistsError as e:
+        logger.error(AppConfig.TRANSACTION_NOT_EXISTS)
+        return ResponseHandler.create_error(AppConfig.TRANSACTION_NOT_EXISTS, e)
+    except (ProgrammingError, StatementError) as e:
+        logger.error(AppConfig.DATABASE_ERROR)
+        return ResponseHandler.create_error(AppConfig.DATABASE_ERROR, e)
+    except SubscriptionError as e:
+        logger.error(AppConfig.NO_SUBSCRIPTION)
+        return ResponseHandler.create_error(
+            AppConfig.NO_SUBSCRIPTION,
+            e,
+            status_code=status.HTTP_403_FORBIDDEN
+        )
 
 
 @app.post("/grant-subscription")
@@ -223,7 +257,7 @@ async def grant_subscription(request: Request):
     """Grant a subscription to a user."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["clientId"])
+        inserter = DataInserter(db_service.get_session(), data["client_id"])
         inserter.grant_subscription(subscription_months=data["subscriptionMonths"])
         
         return ResponseHandler.create_success(
@@ -254,7 +288,7 @@ async def revoke_subscription(request: Request):
     """Revoke a user's subscription."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["clientId"])
+        inserter = DataInserter(db_service.get_session(), data["client_id"])
         inserter.revoke_subscription()
         
         return ResponseHandler.create_success(
