@@ -1,14 +1,20 @@
 import logging
 from os import getenv
 from typing import Dict, Union
+from datetime import timedelta
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DataError, ProgrammingError, StatementError
 
-from databaseManager.connector import DatabaseManager, DatabaseMonitor
-from databaseManager.inserter import DataInserter
+from database_manager.connector import DatabaseManager, DatabaseMonitor
+from database_manager.inserter import DataInserter
 from errors.errors import SubscriptionError, ClientNotExistsError, TransactionNotExistsError
+from auth.auth import (
+    Token, User, authenticate_user, create_access_token,
+    get_current_active_user, ACCESS_TOKEN_EXPIRE_MINUTES
+)
 
 
 class AppConfig:
@@ -102,7 +108,6 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 db_service = DatabaseService()
 
-
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up resources on application shutdown."""
@@ -115,8 +120,26 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@app.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
 @app.post("/create-user")
-async def create_user(request: Request):
+async def create_user(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
     """Create or update a user."""
     try:
         data = await request.json()
@@ -145,7 +168,10 @@ async def create_user(request: Request):
 
 
 @app.post("/create-transaction")
-async def create_transaction(request: Request):
+async def create_transaction(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
     """Create a new transaction."""
     try:
         data = await request.json()
@@ -181,7 +207,10 @@ async def create_transaction(request: Request):
         )
 
 @app.post("/update-transaction")
-async def update_transaction(request: Request):
+async def update_transaction(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
     """update a new transaction."""
     try:
         data = await request.json()
@@ -218,7 +247,10 @@ async def update_transaction(request: Request):
         )
     
 @app.post("/delete-transaction")
-async def delete_transaction(request: Request):
+async def delete_transaction(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
     """delete a new transaction."""
     try:
         data = await request.json()
@@ -253,7 +285,10 @@ async def delete_transaction(request: Request):
 
 
 @app.post("/grant-subscription")
-async def grant_subscription(request: Request):
+async def grant_subscription(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
     """Grant a subscription to a user."""
     try:
         data = await request.json()
@@ -284,7 +319,10 @@ async def grant_subscription(request: Request):
 
 
 @app.post("/revoke-subscription")
-async def revoke_subscription(request: Request):
+async def revoke_subscription(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
     """Revoke a user's subscription."""
     try:
         data = await request.json()
