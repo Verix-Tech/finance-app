@@ -7,3 +7,4 @@ app.log
 database_health.log
 Makefile.dev
 sql/secrets/*
+secrets/*

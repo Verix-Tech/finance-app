@@ -11,3 +11,4 @@ Makefile.dev
 README.md
 deploy.sh
 sql/secrets/*
+secrets/*
