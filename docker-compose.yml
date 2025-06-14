@@ -36,12 +36,19 @@ services:
       DATABASE_USERNAME: jvict
       DATABASE_PASSWORD: /run/secrets/postgres_pass
       DATABASE_PORT: 5432
+      SECRET_KEY: /run/secrets/secret_key
+      ADMIN_PASSWORD: /run/secrets/admin_password
+      ADMIN_USERNAME: jvict
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_FULL_NAME: Admin User
     ports:
       - "8000:8000"
     networks:
       - finance_network
     secrets:
       - postgres_pass
+      - secret_key
+      - admin_password
 
 volumes:
   postgres_data:
@@ -53,3 +60,7 @@ networks:
 secrets:
   postgres_pass:
     file: ./sql/secrets/user_credentials.txt
+  secret_key:
+    file: ./secrets/secret_key.txt
+  admin_password:
+    file: ./secrets/admin_password.txt
