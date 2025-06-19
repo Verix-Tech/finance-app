@@ -14,7 +14,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./sql:/docker-entrypoint-initdb.d
+      - ./api/sql:/docker-entrypoint-initdb.d
       - postgres_data:/var/lib/postgresql/data
     networks:
       - finance_network
@@ -24,11 +24,14 @@ services:
 
   finance-api:
     build:
-      context: .
-    image: finance-api:v0.0.4a
+      context: ./
+      dockerfile: ./FinanceAPI.Dockerfile
+    image: finance-api:v0.0.5b
     container_name: finance_api_container
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       DATABASE: postgres
@@ -41,6 +44,7 @@ services:
       ADMIN_USERNAME: jvict
       ADMIN_EMAIL: admin@example.com
       ADMIN_FULL_NAME: Admin User
+      REDIS_SERVER: redis://redis:6379
     ports:
       - "8000:8000"
     networks:
@@ -49,6 +53,46 @@ services:
       - postgres_pass
       - secret_key
       - admin_password
+
+  celery:
+    build:
+      context: ./
+      dockerfile: ./Celery.Dockerfile
+    image: celery:v0.0.1a
+    container_name: celery_container
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE: postgres
+      DATABASE_ENDPOINT: postgres
+      DATABASE_USERNAME: jvict
+      DATABASE_PASSWORD: /run/secrets/postgres_pass
+      DATABASE_PORT: 5432
+      SECRET_KEY: /run/secrets/secret_key
+      ADMIN_PASSWORD: /run/secrets/admin_password
+      ADMIN_USERNAME: jvict
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_FULL_NAME: Admin User
+      REDIS_SERVER: redis://redis:6379
+    networks:
+      - finance_network
+    secrets:
+      - postgres_pass
+      - secret_key
+      - admin_password
+  redis:
+    image: redis:latest
+    container_name: redis_container
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "6379:6379"
+    networks:
+      - finance_network
 
 volumes:
   postgres_data:
@@ -59,8 +103,8 @@ networks:
 
 secrets:
   postgres_pass:
-    file: ./sql/secrets/user_credentials.txt
+    file: ./api/sql/secrets/user_credentials.txt
   secret_key:
-    file: ./secrets/secret_key.txt
+    file: ./api/secrets/secret_key.txt
   admin_password:
-    file: ./secrets/admin_password.txt
+    file: ./api/secrets/admin_password.txt
