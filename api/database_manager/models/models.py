@@ -1,8 +1,8 @@
 from sqlalchemy import Column, String, Boolean, Float, Integer, DateTime, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
 
 Base = declarative_base()
+
 
 class User(Base):
     __tablename__ = 'users'
@@ -17,6 +17,8 @@ class User(Base):
 class Transaction(Base):
     __tablename__ = 'transactions'
     __table_args__ = {'schema': 'public'}
+
+    __all__ = ['internal_transaction_id', 'transaction_id', 'client_id', 'transaction_revenue', 'payment_method_name', 'payment_location', 'payment_product', 'transaction_timestamp']
 
     internal_transaction_id = Column(String, primary_key=True)
     transaction_id = Column(Integer, nullable=False)

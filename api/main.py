@@ -8,6 +8,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DataError, ProgrammingError, StatementError
 
+from workers.main import generate_extract
+
 from database_manager.connector import DatabaseManager, DatabaseMonitor
 from database_manager.inserter import DataInserter
 from errors.errors import SubscriptionError, ClientNotExistsError, TransactionNotExistsError
@@ -43,7 +45,7 @@ class ResponseHandler:
     def create_error(
         message: str,
         error_detail: Union[DataError, ProgrammingError, StatementError, 
-                           SubscriptionError, ClientNotExistsError, TransactionNotExistsError],
+                           SubscriptionError, ClientNotExistsError, TransactionNotExistsError, ValueError, Exception, str],
         status_code: int = status.HTTP_502_BAD_GATEWAY
     ) -> JSONResponse:
         """Create a standardized error response."""
@@ -82,6 +84,9 @@ class DatabaseService:
         """Get a new database session."""
         return self.manager.get_session()
     
+    def inserter(self, client_id: str):
+        return DataInserter(self.get_session(), client_id)
+    
     def shutdown(self):
         """Clean up database resources."""
         self.manager.shutdown()
@@ -93,7 +98,7 @@ def configure_logging():
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler("app.log"),
+            logging.FileHandler("logs/app.log"),
             logging.StreamHandler()
         ]
     )
@@ -119,9 +124,9 @@ async def health_check():
     """Endpoint for health checks."""
     return {"status": "healthy"}
 
-
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Generate token for authentication."""
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -135,6 +140,145 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+@app.post("/generate-data")
+async def generate_data(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Generate extract for a client."""
+    data = await request.json()
+
+    try:
+        start_date = data.get("start_date") or None
+        end_date = data.get("end_date") or None
+        days_before = data.get("days_before") or None
+        detailed = data.get("detailed") or None
+
+        client_id = db_service.inserter(data["client_id"]).client_id_encrypted
+        
+        # Check if Redis server is configured
+        redis_server = getenv('REDIS_SERVER')
+        if not redis_server:
+            logger.error("REDIS_SERVER environment variable not set")
+            return ResponseHandler.create_error(
+                "Internal server error",
+                "Redis server not configured",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        logger.info(f"Starting Celery task with Redis broker: {redis_server}")
+        
+        # Start the Celery task
+        try:
+            task = generate_extract.delay(
+                client_id=client_id, 
+                start_date=start_date, 
+                end_date=end_date, 
+                days_before=days_before, 
+                detailed=detailed
+            )
+            logger.info(f"Celery task started successfully with ID: {task.id}")
+        except Exception as celery_error:
+            logger.error(f"Failed to start Celery task: {celery_error}")
+            return ResponseHandler.create_error(
+                "Internal server error",
+                f"Failed to start background task: {str(celery_error)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        return ResponseHandler.create_success(
+            data={"task_id": task.id, "status": "task_started"},
+            message="Data generation task started"
+        )
+        
+    except ValueError as e:
+        logger.error(f"Error generating data: {e}")
+        return ResponseHandler.create_error(
+            AppConfig.SYNTAX_ERROR,
+            e,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in generate_data: {e}")
+        return ResponseHandler.create_error(
+            "Internal server error",
+            e,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@app.get("/task-status/{task_id}")
+async def get_task_status(
+    task_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get the status of a Celery task."""
+    try:
+        # Check if Redis server is configured
+        redis_server = getenv('REDIS_SERVER')
+        if not redis_server:
+            logger.error("REDIS_SERVER environment variable not set")
+            return ResponseHandler.create_error(
+                "Internal server error",
+                "Redis server not configured",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        logger.info(f"Checking task status with Redis broker: {redis_server}")
+        
+        try:
+            from workers.main import app as celery_app
+            task_result = celery_app.AsyncResult(task_id)
+        except Exception as import_error:
+            logger.error(f"Failed to import Celery app: {import_error}")
+            return ResponseHandler.create_error(
+                "Internal server error",
+                f"Failed to connect to task broker: {str(import_error)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # Check if the task is ready
+        if task_result.ready():
+            if task_result.successful():
+                return ResponseHandler.create_success(
+                    data={
+                        "task_id": task_id,
+                        "status": "completed",
+                        "result": task_result.result
+                    },
+                    message="Task completed successfully"
+                )
+            else:
+                error_info = task_result.info
+                if isinstance(error_info, dict) and "exc_message" in error_info:
+                    error_message = error_info["exc_message"]
+                    error_type = error_info["exc_type"]
+                else:
+                    error_message = str(error_info) if error_info else "Unknown error"
+                    error_type = type(error_info).__name__
+
+                return ResponseHandler.create_error(
+                    f"Task execution failed: {error_type}",
+                    error_message,
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
+            return ResponseHandler.create_success(
+                data={
+                    "task_id": task_id,
+                    "status": "running",
+                    "state": task_result.state
+                },
+                message="Task is still running"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error checking task status: {e}")
+        return ResponseHandler.create_error(
+            "Error checking task status",
+            e,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
 @app.post("/create-user")
 async def create_user(
     request: Request,
@@ -143,7 +287,7 @@ async def create_user(
     """Create or update a user."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"])
+        inserter = db_service.inserter(data["client_id"])
         inserter.upsert_client(name=data["name"], phone=data["client_id"])
         
         logger.info("User data inserted successfully")
@@ -166,7 +310,6 @@ async def create_user(
             status_code=status.HTTP_403_FORBIDDEN
         )
 
-
 @app.post("/create-transaction")
 async def create_transaction(
     request: Request,
@@ -178,10 +321,11 @@ async def create_transaction(
         inserter = DataInserter(db_service.get_session(), data["client_id"])
         
         transaction_data = inserter.insert_transaction(
-            transaction_revenue=data["transaction_revenue"],
-            payment_method_name=data["payment_method_name"],
-            payment_location=data["payment_location"],
-            payment_product=data["payment_product"]
+            transaction_revenue=data.get("transaction_revenue"), 
+            transaction_timestamp=data.get("transaction_timestamp"),
+            payment_method_name=data.get("payment_method_name"),
+            payment_location=data.get("payment_location"),
+            payment_product=data.get("payment_product")
         )
 
         data["transaction_id"] = transaction_data["transaction_id"]

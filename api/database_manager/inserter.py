@@ -39,7 +39,7 @@ class DataInserter:
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler("app.log"),
+                logging.FileHandler("logs/inserter.log"),
                 logging.StreamHandler()
             ]
         )
@@ -256,9 +256,10 @@ class DataInserter:
     def insert_transaction(
         self,
         transaction_revenue: float,
-        payment_method_name: Optional[str],
-        payment_location: Optional[str],
-        payment_product: Optional[str]
+        transaction_timestamp: Optional[str] = None,
+        payment_method_name: Optional[str] = None,
+        payment_location: Optional[str] = None,
+        payment_product: Optional[str] = None
     ) -> Dict:
         """
         Insert a transaction record for the client.
@@ -281,9 +282,10 @@ class DataInserter:
             f"{transaction_revenue}:{payment_method_name}:"
             f"{payment_location}"
         )
- 
+        
+        transaction_timestamp = transaction_timestamp if transaction_timestamp else datetime.now(self.timezone).strftime('%Y-%m-%d')
         transaction_data = {
-            "transaction_timestamp": datetime.now(self.timezone),
+            "transaction_timestamp": transaction_timestamp,
             "client_id": self.client_id_encrypted,
             "internal_transaction_id": _internal_transaction_id,
             "transaction_id": self.get_transaction_id,

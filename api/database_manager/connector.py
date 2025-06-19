@@ -18,7 +18,7 @@ def configure_logging() -> None:
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler("app.log"),
+            logging.FileHandler("logs/connector.log"),
             logging.StreamHandler()
         ]
     )
@@ -173,12 +173,12 @@ class DatabaseManager:
             
             pool_info.update({
                 'status': 'healthy',
-                'pool_size': pool.size(),
-                'checked_in': pool.checkedin(),
-                'checked_out': pool.checkedout(),
-                'overflow': pool._overflow,
-                'timeout': pool._timeout,
-                'recycle': pool._recycle,
+                'pool_size': getattr(pool, '_pool_size', 0),
+                'checked_in': getattr(pool, '_checkedin', 0),
+                'checked_out': getattr(pool, '_checkedout', 0),
+                'overflow': getattr(pool, '_max_overflow', 0),
+                'timeout': getattr(pool, '_timeout', 0),
+                'recycle': getattr(pool, '_recycle', -1),
             })
             
             # Check active connections if supported
@@ -188,13 +188,13 @@ class DatabaseManager:
                         'in_use': conn.is_valid if hasattr(conn, 'is_valid') else None,
                         'created_at': getattr(conn, 'create_time', None)
                     }
-                    for conn in pool._conn
+                    for conn in getattr(pool, '_conn', [])
                 ]
             
             # Check database sessions if inspector is available
             if inspector:
                 try:
-                    pool_info['active_sessions'] = len(inspector.get_active_connections())
+                    pool_info['active_sessions'] = len(getattr(inspector, 'get_active_connections()', []))
                 except Exception:
                     pass
             
@@ -241,7 +241,7 @@ class DatabaseMonitor:
         """Configure logging for the monitor."""
         logger = logging.getLogger('db_monitor')
         logger.setLevel(logging.INFO)
-        handler = logging.FileHandler('database_health.log')
+        handler = logging.FileHandler('logs/database_health.log')
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)

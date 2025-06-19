@@ -1,0 +1,206 @@
+# import sys
+# from pathlib import Path
+# sys.path.append(str(Path(__file__).parent.parent))
+
+import pandas as pd
+import logging
+from os import getenv
+from datetime import datetime, timedelta
+from typing import Optional
+from sqlalchemy import text
+from celery import Celery, states
+from celery.exceptions import Ignore, Reject
+from sqlalchemy.exc import DataError, ProgrammingError, StatementError
+
+from database_manager.connector import DatabaseManager
+from database_manager.models.models import Transaction
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Get Redis configuration with fallback
+redis_server = getenv('REDIS_SERVER', 'redis://localhost:6379')
+logger.info(f"Configuring Celery with Redis broker: {redis_server}")
+
+try:
+    app = Celery('tasks', broker=redis_server, backend=redis_server)
+    logger.info("Celery app configured successfully")
+    
+    # Configure Celery settings for Docker environment
+    app.conf.update(
+        task_serializer='json',
+        accept_content=['json'],
+        result_serializer='json',
+        timezone='UTC',
+        enable_utc=True,
+        task_track_started=True,
+        task_time_limit=30 * 60,  # 30 minutes
+        task_soft_time_limit=25 * 60,  # 25 minutes
+        worker_prefetch_multiplier=1,
+        worker_max_tasks_per_child=1000,
+    )
+    logger.info("Celery configuration applied successfully")
+except Exception as e:
+    logger.error(f"Failed to configure Celery app: {e}")
+    raise
+
+db_manager = DatabaseManager()
+
+class AppConfig:
+    """Handles application configuration and constants."""
+    
+    # Response messages    
+    DATABASE_ERROR = "erro ao inserir dados, verifique a consulta"
+    SYNTAX_ERROR = "erro de sintaxe, verifique os valores"
+    VALIDATION_ERROR = {
+        "start_date_or_days_before_required": "start_date or days_before must be provided",
+        "invalid_detailed_mode": "Invalid detailed mode",
+        "generate_extract_error": "Unexpected error in generate_extract",
+        "unexpected_error": "Unexpected error in generate_extract"
+    }
+
+
+@app.task(bind=True)
+def generate_extract(
+        self,
+        client_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        days_before: Optional[int] = None,
+        detailed: Optional[dict] = None
+    ):
+    """Generate extract for a client with proper error handling."""
+    try:
+        logger.info(f"Starting extract generation for client_id: {client_id}")
+        
+        columns = ['client_id', 'transaction_timestamp', 'transaction_revenue', 'payment_location', 'payment_method_name', 'payment_product'] if detailed else ['client_id', 'transaction_timestamp', 'transaction_revenue']
+
+        if not start_date and not days_before:
+            error_msg = AppConfig.VALIDATION_ERROR["start_date_or_days_before_required"]
+            logger.error(f"Validation error: {error_msg}")
+            raise ValueError(error_msg)
+        elif days_before:
+            start_date = (datetime.now() - timedelta(days=days_before)).strftime('%Y-%m-%d')
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        elif start_date and not end_date:
+            end_date = start_date
+
+        query = f"""
+                SELECT 
+                    {', '.join(columns)}
+                FROM transactions
+                WHERE
+                    client_id = '{client_id}'
+                    AND date(transaction_timestamp) BETWEEN '{start_date}' AND '{end_date}'
+                """
+        
+        with db_manager.get_session() as session:
+            dados = session.execute(text(query)).all()
+            df = pd.DataFrame(dados, columns=columns)
+
+            df['transaction_timestamp'] = pd.to_datetime(df['transaction_timestamp'])
+
+            if detailed:
+                if detailed["mode"] == "day":
+                    df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y-%m-%d')
+                elif detailed["mode"] == "week":
+                    df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y-%m-%W')
+                elif detailed["mode"] == "month":
+                    df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y-%m')
+                elif detailed["mode"] == "year":
+                    df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y')
+                else:
+                    error_msg = AppConfig.VALIDATION_ERROR["invalid_detailed_mode"]
+                    logger.error(f"Validation error: {error_msg}")
+                    self.update_state(state=states.FAILURE, meta={
+                        'exc_type': str(ValueError),
+                        'exc_message': error_msg
+                    })
+                    raise ValueError(error_msg)
+                    
+            if not detailed or detailed["activated"] == False:
+                extrato = df.groupby(['transaction_timestamp'])['transaction_revenue'].sum()
+            else:
+                extrato = df
+                
+            result = extrato.to_csv('data.csv', index=True)
+            logger.info(f"Extract generation completed successfully for client_id: {client_id}")
+            return {"status": "success", "message": "Extract generated successfully", "data": result}
+            
+    except ValueError as e:
+        error_msg = f"Validation error in generate_extract: {str(e)}"
+        logger.error(error_msg)
+        self.update_state(state=states.FAILURE, meta={
+            'exc_type': type(e).__name__,
+            'exc_message': str(e)
+        })
+        raise Ignore()
+    # except (DataError, ProgrammingError, StatementError) as e:
+    #     error_msg = f"Database error in generate_extract: {str(e)}"
+    #     logger.error(error_msg)
+    #     # Update task state to FAILURE
+    #     self.update_state(state='FAILURE', meta={'error': str(e)})
+    #     raise Exception(error_msg)
+    except Exception as e:
+        error_msg = AppConfig.VALIDATION_ERROR["unexpected_error"]
+        logger.error(error_msg)
+        # Update task state to FAILURE
+        self.update_state(state=states.FAILURE, meta={
+            'exc_type': type(e).__name__,
+            'exc_message': str(e)
+        })
+        raise Ignore()
+
+
+# def generate_extrato(
+#         client_id: str,
+#         start_date: Optional[str] = None,
+#         end_date: Optional[str] = None,
+#         days_before: Optional[int] = None,
+#         detailed: Optional[dict] = None
+#     ):
+#     columns = ['client_id', 'transaction_timestamp', 'transaction_revenue', 'payment_location', 'payment_method_name', 'payment_product'] if detailed else ['client_id', 'transaction_timestamp', 'transaction_revenue']
+
+#     if not start_date and not days_before:
+#         raise ValueError("start_date or days_before must be provided")
+#     elif days_before:
+#         start_date = (datetime.now() - timedelta(days=days_before)).strftime('%Y-%m-%d')
+#         end_date = datetime.now().strftime('%Y-%m-%d')
+#     elif start_date and not end_date:
+#         end_date = start_date
+
+#     query = f"""
+#             SELECT 
+#                 {', '.join(columns)}
+#             FROM transactions
+#             WHERE
+#                 client_id = '{client_id}'
+#                 AND date(transaction_timestamp) BETWEEN '{start_date}' AND '{end_date}'
+#             """
+    
+#     with db_manager.get_session() as session:
+#         dados = session.execute(text(query)).all()
+#         df = pd.DataFrame(dados, columns=columns)
+
+#         df['transaction_timestamp'] = pd.to_datetime(df['transaction_timestamp'])
+
+#         if detailed:
+#             if detailed["mode"] == "day":
+#                 df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y-%m-%d')
+#             elif detailed["mode"] == "week":
+#                 df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y-%m-%W')
+#             elif detailed["mode"] == "month":
+#                 df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y-%m')
+#             elif detailed["mode"] == "year":
+#                 df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y')
+#             else:
+#                 pass
+#         if not detailed or detailed["activated"] == False:
+#             extrato = df.groupby(['transaction_timestamp'])['transaction_revenue'].sum()
+#         else:
+#             extrato = df
+
+#         # return extrato.to_csv('data.csv', index=True)
+#         return extrato
+        
+# print(generate_extrato(client_id='03ea955e9cb322cc9eb64ffc3cc4d4a7a471a25b', days_before=5, detailed={"mode": "week", "activated": True}))
