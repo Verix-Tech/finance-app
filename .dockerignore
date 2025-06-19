@@ -12,3 +12,7 @@ README.md
 deploy.sh
 sql/secrets/*
 secrets/*
+api/*.csv
+api/*.json
+*.rdb
+api/.env*
