@@ -25,7 +25,7 @@ fonttools==4.58.4
 greenlet==3.2.2
 h11==0.16.0
 httpcore==1.0.9
-httpx==0.25.2
+httpx==0.27.2
 idna==3.10
 kiwisolver==1.4.8
 kombu==5.5.4
@@ -34,6 +34,7 @@ MarkupSafe==3.0.2
 matplotlib==3.10.3
 narwhals==1.43.0
 numpy==2.2.6
+openai==1.88.0
 packaging==25.0
 pandas==2.2.3
 passlib==1.7.4
@@ -53,9 +54,10 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.1.0
 python-jose==3.3.0
 python-multipart==0.0.9
-python-telegram-bot==20.6
+python-telegram-bot==21.3
 pytz==2025.2
 redis==5.0.1
+requests==2.32.3
 reportlab==4.4.1
 rsa==4.9.1
 setuptools==69.0.3
