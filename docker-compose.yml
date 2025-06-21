@@ -25,7 +25,7 @@ services:
   finance-api:
     build:
       context: ./
-      dockerfile: ./FinanceAPI.Dockerfile
+      dockerfile: ./docker/FinanceAPI.Dockerfile
     image: finance-api:v0.0.5b
     container_name: finance_api_container
     depends_on:
@@ -57,7 +57,7 @@ services:
   celery:
     build:
       context: ./
-      dockerfile: ./Celery.Dockerfile
+      dockerfile: ./docker/Celery.Dockerfile
     image: celery:v0.0.1a
     container_name: celery_container
     depends_on:
@@ -94,6 +94,19 @@ services:
     networks:
       - finance_network
 
+  bot:
+    build:
+      context: ./
+      dockerfile: ./docker/Bot.Dockerfile
+    image: bot:v0.0.1a
+    container_name: bot_container
+    environment:
+      SECRETS: /run/secrets/bot_credentials
+    networks:
+      - finance_network
+    secrets:
+      - bot_credentials
+
 volumes:
   postgres_data:
 
@@ -108,3 +121,5 @@ secrets:
     file: ./api/secrets/secret_key.txt
   admin_password:
     file: ./api/secrets/admin_password.txt
+  bot_credentials:
+    file: ./bot/secrets/secret.json
