@@ -84,8 +84,8 @@ class DatabaseService:
         """Get a new database session."""
         return self.manager.get_session()
     
-    def inserter(self, client_id: str):
-        return DataInserter(self.get_session(), client_id)
+    def inserter(self, client_id: str, id_type: str):
+        return DataInserter(self.get_session(), client_id, id_type)
     
     def shutdown(self):
         """Clean up database resources."""
@@ -154,7 +154,7 @@ async def generate_data(
         days_before = data.get("days_before") or None
         detailed = data.get("detailed") or None
 
-        client_id = db_service.inserter(data["client_id"]).client_id_encrypted
+        client_id = db_service.inserter(data["client_id"], data["id_type"]).client_id_uuid
         
         # Check if Redis server is configured
         redis_server = getenv('REDIS_SERVER')
@@ -287,8 +287,8 @@ async def create_user(
     """Create or update a user."""
     try:
         data = await request.json()
-        inserter = db_service.inserter(data["client_id"])
-        inserter.upsert_client(name=data["name"], phone=data["client_id"])
+        inserter = db_service.inserter(data["client_id"], data["id_type"])
+        inserter.upsert_client(name=data["name"], phone=data["phone"])
         
         logger.info("User data inserted successfully")
         return ResponseHandler.create_success(
@@ -296,6 +296,44 @@ async def create_user(
             message=f"Client '{inserter.client_id}' updated!"
         )
     
+    except DataError as e:
+        logger.error(AppConfig.SYNTAX_ERROR)
+        return ResponseHandler.create_error(AppConfig.SYNTAX_ERROR, e)
+    except (ProgrammingError, StatementError) as e:
+        logger.error(AppConfig.DATABASE_ERROR)
+        return ResponseHandler.create_error(AppConfig.DATABASE_ERROR, e)
+    except SubscriptionError as e:
+        logger.error(AppConfig.NO_SUBSCRIPTION)
+        return ResponseHandler.create_error(
+            AppConfig.NO_SUBSCRIPTION, 
+            e, 
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+    
+@app.get("/client-exists")
+async def client_exists(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Check if a client exists."""
+    try:
+        data = await request.json()
+        inserter = db_service.inserter(data["client_id"], data["id_type"])
+        if inserter._client_exists():
+            return ResponseHandler.create_success(
+                data=data,
+                message=f"Client '{inserter.client_id_uuid}' exists!"
+            )
+        else:
+            return ResponseHandler.create_error(
+                AppConfig.CLIENT_NOT_EXISTS, 
+                f"Client '{inserter.client_id_uuid}' does not exist!",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+    
+    except ClientNotExistsError as e:
+        logger.error(AppConfig.CLIENT_NOT_EXISTS)
+        return ResponseHandler.create_error(AppConfig.CLIENT_NOT_EXISTS, e)
     except DataError as e:
         logger.error(AppConfig.SYNTAX_ERROR)
         return ResponseHandler.create_error(AppConfig.SYNTAX_ERROR, e)
@@ -318,7 +356,7 @@ async def create_transaction(
     """Create a new transaction."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"])
+        inserter = DataInserter(db_service.get_session(), data["client_id"], data["id_type"])
         
         transaction_data = inserter.insert_transaction(
             transaction_revenue=data.get("transaction_revenue"), 
@@ -358,7 +396,7 @@ async def update_transaction(
     """update a new transaction."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"])
+        inserter = DataInserter(db_service.get_session(), data["client_id"], data["id_type"])
         
         update_data = {k:v for k,v in data.items() if k not in ["client_id", "transactionId"]}
 
@@ -398,7 +436,7 @@ async def delete_transaction(
     """delete a new transaction."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"])
+        inserter = DataInserter(db_service.get_session(), data["client_id"], data["id_type"])
 
         transaction_data = inserter.delete_transaction(
             data=data
@@ -436,7 +474,7 @@ async def grant_subscription(
     """Grant a subscription to a user."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"])
+        inserter = DataInserter(db_service.get_session(), data["client_id"], data["id_type"])
         inserter.grant_subscription(subscription_months=data["subscriptionMonths"])
         
         return ResponseHandler.create_success(
@@ -470,7 +508,7 @@ async def revoke_subscription(
     """Revoke a user's subscription."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"])
+        inserter = DataInserter(db_service.get_session(), data["client_id"], data["id_type"])
         inserter.revoke_subscription()
         
         return ResponseHandler.create_success(
