@@ -1,6 +1,6 @@
-# import sys
-# from pathlib import Path
-# sys.path.append(str(Path(__file__).parent.parent))
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 
 import pandas as pd
 import logging
@@ -68,7 +68,7 @@ def generate_extract(
         end_date: Optional[str] = None,
         days_before: Optional[int] = None,
         detailed: Optional[dict] = None
-    ):
+    ) -> dict:
     """Generate extract for a client with proper error handling."""
     try:
         logger.info(f"Starting extract generation for client_id: {client_id}")
@@ -123,7 +123,7 @@ def generate_extract(
             else:
                 extrato = df
                 
-            result = extrato.to_csv('data.csv', index=True)
+            result = extrato.to_csv('data/data.csv', index=True)
             logger.info(f"Extract generation completed successfully for client_id: {client_id}")
             return {"status": "success", "message": "Extract generated successfully", "data": result}
             
@@ -135,16 +135,17 @@ def generate_extract(
             'exc_message': str(e)
         })
         raise Ignore()
-    # except (DataError, ProgrammingError, StatementError) as e:
-    #     error_msg = f"Database error in generate_extract: {str(e)}"
-    #     logger.error(error_msg)
-    #     # Update task state to FAILURE
-    #     self.update_state(state='FAILURE', meta={'error': str(e)})
-    #     raise Exception(error_msg)
+    except (DataError, ProgrammingError, StatementError) as e:
+        error_msg = f"Database error in generate_extract: {str(e)}"
+        logger.error(error_msg)
+        self.update_state(state=states.FAILURE, meta={
+            'exc_type': type(e).__name__,
+            'exc_message': str(e)
+        })
+        raise Ignore()
     except Exception as e:
         error_msg = AppConfig.VALIDATION_ERROR["unexpected_error"]
         logger.error(error_msg)
-        # Update task state to FAILURE
         self.update_state(state=states.FAILURE, meta={
             'exc_type': type(e).__name__,
             'exc_message': str(e)
@@ -159,10 +160,15 @@ def generate_extract(
 #         days_before: Optional[int] = None,
 #         detailed: Optional[dict] = None
 #     ):
+#     # try:
+#     logger.info(f"Starting extract generation for client_id: {client_id}")
+    
 #     columns = ['client_id', 'transaction_timestamp', 'transaction_revenue', 'payment_location', 'payment_method_name', 'payment_product'] if detailed else ['client_id', 'transaction_timestamp', 'transaction_revenue']
 
 #     if not start_date and not days_before:
-#         raise ValueError("start_date or days_before must be provided")
+#         error_msg = AppConfig.VALIDATION_ERROR["start_date_or_days_before_required"]
+#         logger.error(f"Validation error: {error_msg}")
+#         raise ValueError(error_msg)
 #     elif days_before:
 #         start_date = (datetime.now() - timedelta(days=days_before)).strftime('%Y-%m-%d')
 #         end_date = datetime.now().strftime('%Y-%m-%d')
@@ -173,9 +179,9 @@ def generate_extract(
 #             SELECT 
 #                 {', '.join(columns)}
 #             FROM transactions
-#             WHERE
-#                 client_id = '{client_id}'
-#                 AND date(transaction_timestamp) BETWEEN '{start_date}' AND '{end_date}'
+#             -- WHERE
+#                 -- client_id = '{client_id}'
+#                 -- AND date(transaction_timestamp) BETWEEN '{start_date}' AND '{end_date}'
 #             """
     
 #     with db_manager.get_session() as session:
@@ -195,12 +201,46 @@ def generate_extract(
 #                 df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y')
 #             else:
 #                 pass
+#                 # error_msg = AppConfig.VALIDATION_ERROR["invalid_detailed_mode"]
+#                 # logger.error(f"Validation error: {error_msg}")
+#                 # self.update_state(state=states.FAILURE, meta={
+#                 #     'exc_type': str(ValueError),
+#                 #     'exc_message': error_msg
+#                 # })
+#                 # raise ValueError(error_msg)
+                
 #         if not detailed or detailed["activated"] == False:
 #             extrato = df.groupby(['transaction_timestamp'])['transaction_revenue'].sum()
 #         else:
 #             extrato = df
-
-#         # return extrato.to_csv('data.csv', index=True)
-#         return extrato
+            
+#         result = extrato.to_csv('data/data.csv', index=True)
+#         logger.info(f"Extract generation completed successfully for client_id: {client_id}")
+#         return {"status": "success", "message": "Extract generated successfully", "data": result}
+            
+    # except ValueError as e:
+    #     error_msg = f"Validation error in generate_extract: {str(e)}"
+    #     logger.error(error_msg)
+    #     self.update_state(state=states.FAILURE, meta={
+    #         'exc_type': type(e).__name__,
+    #         'exc_message': str(e)
+    #     })
+    #     raise Ignore()
+    # except (DataError, ProgrammingError, StatementError) as e:
+    #     error_msg = f"Database error in generate_extract: {str(e)}"
+    #     logger.error(error_msg)
+    #     self.update_state(state=states.FAILURE, meta={
+    #         'exc_type': type(e).__name__,
+    #         'exc_message': str(e)
+    #     })
+    #     raise Ignore()
+    # except Exception as e:
+    #     error_msg = AppConfig.VALIDATION_ERROR["unexpected_error"]
+    #     logger.error(error_msg)
+    #     self.update_state(state=states.FAILURE, meta={
+    #         'exc_type': type(e).__name__,
+    #         'exc_message': str(e)
+    #     })
+    #     raise Ignore()
         
-# print(generate_extrato(client_id='03ea955e9cb322cc9eb64ffc3cc4d4a7a471a25b', days_before=5, detailed={"mode": "week", "activated": True}))
+# print(generate_extrato(client_id='e1b043b5-0d52-4883-8fe9-1de12f755b2d', start_date='2025-04-01', end_date='2025-04-30', detailed={"mode": "day", "activated": False}))
