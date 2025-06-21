@@ -12,3 +12,7 @@ api/*.csv
 api/*.json
 *.rdb
 api/.env*
+api/data/*
+bot/secrets/*
+bot/logs/*
+bot/.env*
