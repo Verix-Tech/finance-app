@@ -37,6 +37,7 @@ class Client(Base):
     )
 
     client_id = Column(String, primary_key=True)
+    telegram_id = Column(String)
     name = Column(String)
     phone = Column(String)
     created_at = Column(String)
