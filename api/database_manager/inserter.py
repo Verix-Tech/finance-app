@@ -1,7 +1,8 @@
 import hashlib
 import logging
+import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 
 from dateutil.relativedelta import relativedelta
 from pytz import timezone
@@ -14,7 +15,10 @@ from errors.errors import SubscriptionError, ClientNotExistsError, TransactionNo
 class DataInserter:
     """Handles database operations for client subscriptions and transactions."""
     
-    def __init__(self, session: Session, client_id: str) -> None:
+    def __init__(self, session: Session, client_id: str, id_type: str) -> None:
+        if id_type not in ["phone", "telegram_id"]:
+            raise ValueError("Invalid ID type")
+        
         """
         Initialize the DataInserter.
         
@@ -25,9 +29,9 @@ class DataInserter:
         self.session = session
         self.timezone = timezone("America/Sao_Paulo")
         self.client_id = client_id
-        self.client_id_encrypted = self._encrypt_data(client_id)
         self.customers_table = "clients"
         self.transactions_table = "transactions"
+        self.client_id_uuid = str(uuid.uuid4()) if not self._get_client_id(id_type, client_id) else self._get_client_id(id_type, client_id)
         
         # Configure logging
         self._configure_logging()
@@ -61,6 +65,25 @@ class DataInserter:
         hasher = hashlib.sha1()
         hasher.update(data.encode("utf-8"))
         return hasher.hexdigest()
+    
+    def _get_client_id(self, id_type: str, id_value: str) -> Union[str, bool]:
+        """
+        Get the client ID.
+        
+        Returns:
+            The client ID
+        """
+        query = text(
+            f"SELECT client_id FROM {self.customers_table} WHERE {id_type} = :{id_type}"
+        )
+        result = self.session.execute(
+            query,
+            {id_type: id_value}
+        ).first()
+
+        if not result:
+            return False
+        return result[0]
     
     def _execute_update(self, table: str, set_values: dict, where_condition: str) -> None:
         """
@@ -106,7 +129,7 @@ class DataInserter:
             values: Dictionary of column-value pairs to insert
         """
         if "client_id" in values.keys():
-            values["client_id"] = self.client_id_encrypted
+            values["client_id"] = self.client_id_uuid
         where_condition = "AND ".join(f"{k} = :{k} " for k in values.keys())
 
         query = text(
@@ -132,7 +155,7 @@ class DataInserter:
         )
         result = self.session.execute(
             query,
-            {"client_id": self.client_id_encrypted}
+            {"client_id": self.client_id_uuid}
         ).first()
         
         if not result:
@@ -155,7 +178,7 @@ class DataInserter:
         )
         result = self.session.execute(
             query,
-            {"client_id": self.client_id_encrypted}
+            {"client_id": self.client_id_uuid}
         ).first()
         
         if not result or not result[0]:
@@ -178,7 +201,7 @@ class DataInserter:
         )
         result = self.session.execute(
             query,
-            {"client_id": self.client_id_encrypted, "transaction_id": transaction_id}
+            {"client_id": self.client_id_uuid, "transaction_id": transaction_id}
         ).first()
         
         if not result:
@@ -207,7 +230,7 @@ class DataInserter:
         self._execute_update(
             table=self.customers_table,
             set_values=update_values,
-            where_condition=f"client_id = '{self.client_id_encrypted}'"
+            where_condition=f"client_id = '{self.client_id_uuid}'"
         )
     
     def revoke_subscription(self) -> None:
@@ -227,7 +250,7 @@ class DataInserter:
         self._execute_update(
             table=self.customers_table,
             set_values=update_values,
-            where_condition=f"client_id = '{self.client_id_encrypted}'"
+            where_condition=f"client_id = '{self.client_id_uuid}'"
         )
 
     @property
@@ -243,7 +266,7 @@ class DataInserter:
         result = self.session.execute(
             query,
             {
-                "client_id": self.client_id_encrypted
+                "client_id": self.client_id_uuid
             }
         ).first()
         if not result or not result[0]:
@@ -286,7 +309,7 @@ class DataInserter:
         transaction_timestamp = transaction_timestamp if transaction_timestamp else datetime.now(self.timezone).strftime('%Y-%m-%d')
         transaction_data = {
             "transaction_timestamp": transaction_timestamp,
-            "client_id": self.client_id_encrypted,
+            "client_id": self.client_id_uuid,
             "internal_transaction_id": _internal_transaction_id,
             "transaction_id": self.get_transaction_id,
             "transaction_revenue": transaction_revenue,
@@ -317,11 +340,10 @@ class DataInserter:
         else: self._has_active_subscription()
 
         phone = phone if phone is not None else self.client_id
-        
         query = text(
             f"INSERT INTO {self.customers_table} "
-            "(client_id, name, phone, created_at, updated_at) "
-            "VALUES (:client_id, :name, :phone, :created_at, :updated_at) "
+            "(client_id, telegram_id, name, phone, created_at, updated_at) "
+            "VALUES (:client_id, :telegram_id, :name, :phone, :created_at, :updated_at) "
             "ON CONFLICT (client_id) "
             "DO UPDATE SET "
             "name = EXCLUDED.name, "
@@ -332,7 +354,8 @@ class DataInserter:
         self.session.execute(
             query,
             {
-                "client_id": self.client_id_encrypted,
+                "client_id": self.client_id_uuid,
+                "telegram_id": self.client_id,
                 "name": name,
                 "phone": phone,
                 "created_at": datetime.now(self.timezone),
@@ -367,7 +390,7 @@ class DataInserter:
             table=self.transactions_table,
             set_values=update_values,
             where_condition=f"""
-                client_id = '{self.client_id_encrypted}'
+                client_id = '{self.client_id_uuid}'
                 AND transaction_id = {transaction_id}
             """
         )
