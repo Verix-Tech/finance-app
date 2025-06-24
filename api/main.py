@@ -1,11 +1,12 @@
 import logging
+import io
 from os import getenv
 from typing import Dict, Union
 from datetime import timedelta
 
 from fastapi import FastAPI, Request, status, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.exc import DataError, ProgrammingError, StatementError
 
 from workers.main import generate_extract
@@ -69,6 +70,18 @@ class ResponseHandler:
             },
             status_code=status_code
         )
+    
+    @staticmethod
+    def create_csv_response(
+        data: io.StringIO
+    ) -> StreamingResponse:
+        return StreamingResponse(
+            iter([data.getvalue()]),
+            headers={
+                "Content-Disposition": f"attachment; filename=extract.json"
+            },
+            media_type="application/json"
+        )
 
 
 class DatabaseService:
@@ -84,8 +97,8 @@ class DatabaseService:
         """Get a new database session."""
         return self.manager.get_session()
     
-    def inserter(self, client_id: str, id_type: str):
-        return DataInserter(self.get_session(), client_id, id_type)
+    def inserter(self, platform_id: str):
+        return DataInserter(self.get_session(), platform_id)
     
     def shutdown(self):
         """Clean up database resources."""
@@ -152,9 +165,9 @@ async def generate_data(
         start_date = data.get("start_date") or None
         end_date = data.get("end_date") or None
         days_before = data.get("days_before") or None
-        detailed = data.get("detailed") or None
+        aggr = data.get("aggr") or None
 
-        client_id = db_service.inserter(data["client_id"], data["id_type"]).client_id_uuid
+        client_id = db_service.inserter(data["platform_id"]).client_id_uuid
         
         # Check if Redis server is configured
         redis_server = getenv('REDIS_SERVER')
@@ -175,7 +188,7 @@ async def generate_data(
                 start_date=start_date, 
                 end_date=end_date, 
                 days_before=days_before, 
-                detailed=detailed
+                aggr=aggr
             )
             logger.info(f"Celery task started successfully with ID: {task.id}")
         except Exception as celery_error:
@@ -239,13 +252,11 @@ async def get_task_status(
         # Check if the task is ready
         if task_result.ready():
             if task_result.successful():
-                return ResponseHandler.create_success(
-                    data={
-                        "task_id": task_id,
-                        "status": "completed",
-                        "result": task_result.result
-                    },
-                    message="Task completed successfully"
+                result = task_result.result
+                stream = io.StringIO(result)
+                    
+                return ResponseHandler.create_csv_response(
+                    data=stream
                 )
             else:
                 error_info = task_result.info
@@ -287,13 +298,13 @@ async def create_user(
     """Create or update a user."""
     try:
         data = await request.json()
-        inserter = db_service.inserter(data["client_id"], data["id_type"])
-        inserter.upsert_client(name=data["name"], phone=data["phone"])
+        inserter = db_service.inserter(data["platform_id"])
+        inserter.upsert_client(platform_name=data["platform_name"], name=data["name"], phone=data["phone"])
         
         logger.info("User data inserted successfully")
         return ResponseHandler.create_success(
             data=data,
-            message=f"Client '{inserter.client_id}' updated!"
+            message=f"Client '{inserter.platform_id}' updated!"
         )
     
     except DataError as e:
@@ -318,7 +329,7 @@ async def client_exists(
     """Check if a client exists."""
     try:
         data = await request.json()
-        inserter = db_service.inserter(data["client_id"], data["id_type"])
+        inserter = db_service.inserter(data["platform_id"])
         if inserter._client_exists():
             return ResponseHandler.create_success(
                 data=data,
@@ -356,14 +367,15 @@ async def create_transaction(
     """Create a new transaction."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"], data["id_type"])
+        inserter = DataInserter(db_service.get_session(), data["platform_id"])
         
         transaction_data = inserter.insert_transaction(
             transaction_revenue=data.get("transaction_revenue"), 
             transaction_timestamp=data.get("transaction_timestamp"),
             payment_method_name=data.get("payment_method_name"),
-            payment_location=data.get("payment_location"),
-            payment_product=data.get("payment_product")
+            payment_description=data.get("payment_description"),
+            payment_category=data.get("payment_category"),
+            transaction_type=data.get("transaction_type")
         )
 
         data["transaction_id"] = transaction_data["transaction_id"]
@@ -371,7 +383,7 @@ async def create_transaction(
         logger.info("Transaction created successfully")
         return ResponseHandler.create_success(
             data=data,
-            message=f"Transaction created for client: {inserter.client_id}!"
+            message=f"Transaction created for client: {inserter.platform_id}!"
         )
     
     except ClientNotExistsError as e:
@@ -396,7 +408,7 @@ async def update_transaction(
     """update a new transaction."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"], data["id_type"])
+        inserter = DataInserter(db_service.get_session(), data["platform_id"])
         
         update_data = {k:v for k,v in data.items() if k not in ["client_id", "transactionId"]}
 
@@ -408,7 +420,7 @@ async def update_transaction(
         logger.info("Transaction updated successfully")
         return ResponseHandler.create_success(
             data=data,
-            message=f"Transaction updated for client: {inserter.client_id}!"
+            message=f"Transaction updated for client: {inserter.platform_id}!"
         )
     
     except ClientNotExistsError as e:
@@ -436,7 +448,7 @@ async def delete_transaction(
     """delete a new transaction."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"], data["id_type"])
+        inserter = DataInserter(db_service.get_session(), data["platform_id"])
 
         transaction_data = inserter.delete_transaction(
             data=data
@@ -445,7 +457,7 @@ async def delete_transaction(
         logger.info("Transaction deleted successfully")
         return ResponseHandler.create_success(
             data=data,
-            message=f"Transaction deleted for client: {inserter.client_id}!"
+            message=f"Transaction deleted for client: {inserter.platform_id}!"
         )
     
     except ClientNotExistsError as e:
@@ -474,12 +486,12 @@ async def grant_subscription(
     """Grant a subscription to a user."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"], data["id_type"])
+        inserter = DataInserter(db_service.get_session(), data["platform_id"])
         inserter.grant_subscription(subscription_months=data["subscriptionMonths"])
         
         return ResponseHandler.create_success(
             data=data,
-            message=f"Subscription created for client: {inserter.client_id}!"
+            message=f"Subscription created for client: {inserter.platform_id}!"
         )
     
     except ClientNotExistsError as e:
@@ -508,12 +520,12 @@ async def revoke_subscription(
     """Revoke a user's subscription."""
     try:
         data = await request.json()
-        inserter = DataInserter(db_service.get_session(), data["client_id"], data["id_type"])
+        inserter = DataInserter(db_service.get_session(), data["platform_id"])
         inserter.revoke_subscription()
         
         return ResponseHandler.create_success(
             data=data,
-            message=f"Subscription revoked for client: {inserter.client_id}!"
+            message=f"Subscription revoked for client: {inserter.platform_id}!"
         )
     
     except ClientNotExistsError as e:
