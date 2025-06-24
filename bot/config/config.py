@@ -23,13 +23,13 @@ class BotConfig:
         self.model = "gpt-4.1-nano"
         self.TELEGRAM_TOKEN = SECRETS.get("TELEGRAM_BOT_TOKEN") or ""
     
-    def generate_response(self, user_message: str, user_name: str = "unknown") -> dict:
+    def generate_response(self, user_message: str) -> dict:
         logger.info(f"Generating response for user message: {user_message}")
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": self.prompt},
-                {"role": "user", "content": user_name + " " + user_message}
+                {"role": "user", "content": user_message}
             ],
             response_format={"type": "json_object"}
         )
@@ -107,10 +107,9 @@ class SQLDBConfig:
         self._save_token(token_data)
         return token_data["access_token"]
     
-    def send_request(self, endpoint: str, method: str, params: dict, client_id: Optional[str] = None) -> Response:
-        endpoint = f"{self.API_URL}{endpoint}"
-        params["client_id"] = client_id if params.get("client_id") is None else params["client_id"]
-        params["id_type"] = "telegram_id"
+    def send_request(self, endpoint: str, endpoint_var: str = "", method: str = "get", params: dict = {}, platform_id: Optional[str] = None) -> Response:
+        endpoint = f"{self.API_URL}{endpoint}/{endpoint_var}" if endpoint_var else f"{self.API_URL}{endpoint}"
+        params["platform_id"] = platform_id if params.get("platform_id") is None else params["platform_id"]
 
         # Get a valid token (will re-authenticate if expired)
         token = self._get_valid_token()
