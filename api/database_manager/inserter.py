@@ -15,23 +15,20 @@ from errors.errors import SubscriptionError, ClientNotExistsError, TransactionNo
 class DataInserter:
     """Handles database operations for client subscriptions and transactions."""
     
-    def __init__(self, session: Session, client_id: str, id_type: str) -> None:
-        if id_type not in ["phone", "telegram_id"]:
-            raise ValueError("Invalid ID type")
-        
+    def __init__(self, session: Session, platform_id: str) -> None:
         """
         Initialize the DataInserter.
         
         Args:
             session: SQLAlchemy database session
-            client_id: The client identifier
+            platform_id: The client identifier
         """
         self.session = session
         self.timezone = timezone("America/Sao_Paulo")
-        self.client_id = client_id
+        self.platform_id = platform_id
         self.customers_table = "clients"
         self.transactions_table = "transactions"
-        self.client_id_uuid = str(uuid.uuid4()) if not self._get_client_id(id_type, client_id) else self._get_client_id(id_type, client_id)
+        self.client_id_uuid = str(uuid.uuid4()) if not self._get_client_id() else self._get_client_id()
         
         # Configure logging
         self._configure_logging()
@@ -66,7 +63,7 @@ class DataInserter:
         hasher.update(data.encode("utf-8"))
         return hasher.hexdigest()
     
-    def _get_client_id(self, id_type: str, id_value: str) -> Union[str, bool]:
+    def _get_client_id(self) -> Union[str, bool]:
         """
         Get the client ID.
         
@@ -74,11 +71,11 @@ class DataInserter:
             The client ID
         """
         query = text(
-            f"SELECT client_id FROM {self.customers_table} WHERE {id_type} = :{id_type}"
+            f"SELECT client_id FROM {self.customers_table} WHERE platform_id = :platform_id"
         )
         result = self.session.execute(
             query,
-            {id_type: id_value}
+            {"platform_id": self.platform_id}
         ).first()
 
         if not result:
@@ -128,8 +125,9 @@ class DataInserter:
             table: The table to insert into
             values: Dictionary of column-value pairs to insert
         """
-        if "client_id" in values.keys():
+        if "platform_id" in values.keys():
             values["client_id"] = self.client_id_uuid
+            values.pop("platform_id")
         where_condition = "AND ".join(f"{k} = :{k} " for k in values.keys())
 
         query = text(
@@ -151,15 +149,15 @@ class DataInserter:
         """
         query = text(
             f"SELECT client_id FROM {self.customers_table} "
-            f"WHERE client_id = :client_id"
+            f"WHERE platform_id = :platform_id"
         )
         result = self.session.execute(
             query,
-            {"client_id": self.client_id_uuid}
+            {"platform_id": self.platform_id}
         ).first()
         
         if not result:
-            raise ClientNotExistsError(f"Client '{self.client_id}' not found")
+            raise ClientNotExistsError(f"Client '{self.platform_id}' not found")
         return True
     
     def _has_active_subscription(self) -> bool:
@@ -182,7 +180,7 @@ class DataInserter:
         ).first()
         
         if not result or not result[0]:
-            raise SubscriptionError(f"Client '{self.client_id}' has no active subscription")
+            raise SubscriptionError(f"Client '{self.client_id_uuid}' has no active subscription")
         return True
     
     def _transaction_exists(self, transaction_id) -> bool:
@@ -205,7 +203,7 @@ class DataInserter:
         ).first()
         
         if not result:
-            raise TransactionNotExistsError(f"transaction '{transaction_id}' for client '{self.client_id}' not found")
+            raise TransactionNotExistsError(f"transaction '{transaction_id}' for client '{self.client_id_uuid}' not found")
         return True
     
     def grant_subscription(self, subscription_months: int) -> None:
@@ -227,11 +225,15 @@ class DataInserter:
             "subscribed": True
         }
         
-        self._execute_update(
-            table=self.customers_table,
-            set_values=update_values,
-            where_condition=f"client_id = '{self.client_id_uuid}'"
-        )
+        try:
+            self._execute_update(
+                table=self.customers_table,
+                set_values=update_values,
+                where_condition=f"client_id = '{self.client_id_uuid}'"
+            )
+        except Exception as e:
+            self.session.rollback()
+            raise e
     
     def revoke_subscription(self) -> None:
         """
@@ -247,11 +249,15 @@ class DataInserter:
             "subscribed": False
         }
         
-        self._execute_update(
-            table=self.customers_table,
-            set_values=update_values,
-            where_condition=f"client_id = '{self.client_id_uuid}'"
-        )
+        try:
+            self._execute_update(
+                table=self.customers_table,
+                set_values=update_values,
+                where_condition=f"client_id = '{self.client_id_uuid}'"
+            )
+        except Exception as e:
+            self.session.rollback()
+            raise e
 
     @property
     def get_transaction_id(self):
@@ -279,20 +285,22 @@ class DataInserter:
     def insert_transaction(
         self,
         transaction_revenue: float,
+        transaction_type: str,
         transaction_timestamp: Optional[str] = None,
         payment_method_name: Optional[str] = None,
-        payment_location: Optional[str] = None,
-        payment_product: Optional[str] = None
+        payment_description: Optional[str] = None,
+        payment_category: Optional[str] = None
     ) -> Dict:
         """
         Insert a transaction record for the client.
         
         Args:
             transaction_revenue: The transaction amount
+            transaction_type: The transaction type
+            transaction_timestamp: The transaction timestamp
             payment_method_name: Payment method used
-            payment_location: Location of payment
-            payment_product: Product purchased
-            
+            payment_description: Description of payment
+            payment_category: The payment category
         Raises:
             ClientNotExistsError: If client doesn't exist
             SubscriptionError: If client has no active subscription
@@ -301,9 +309,9 @@ class DataInserter:
         self._has_active_subscription()
         
         _internal_transaction_id = self._encrypt_data(
-            f"{self.client_id}:{datetime.now(self.timezone)}:"
+            f"{self.client_id_uuid}:{datetime.now(self.timezone)}:"
             f"{transaction_revenue}:{payment_method_name}:"
-            f"{payment_location}"
+            f"{payment_description}"
         )
         
         transaction_timestamp = transaction_timestamp if transaction_timestamp else datetime.now(self.timezone).strftime('%Y-%m-%d')
@@ -313,19 +321,24 @@ class DataInserter:
             "internal_transaction_id": _internal_transaction_id,
             "transaction_id": self.get_transaction_id,
             "transaction_revenue": transaction_revenue,
+            "transaction_type": transaction_type,
             "payment_method_name": payment_method_name,
-            "payment_location": payment_location,
-            "payment_product": payment_product
+            "payment_description": payment_description,
+            "payment_category": payment_category
         }
         
-        self._execute_insert(
-            table=self.transactions_table,
-            values=transaction_data
-        )
+        try:
+            self._execute_insert(
+                table=self.transactions_table,
+                values=transaction_data
+            )
+        except Exception as e:
+            self.session.rollback()
+            raise e
 
         return transaction_data
     
-    def upsert_client(self, name: str, phone: str) -> None:
+    def upsert_client(self, platform_name: str, name: str, phone: str) -> None:
         """
         Insert or update client information.
         
@@ -339,30 +352,35 @@ class DataInserter:
         except ClientNotExistsError as e: ...
         else: self._has_active_subscription()
 
-        phone = phone if phone is not None else self.client_id
         query = text(
             f"INSERT INTO {self.customers_table} "
-            "(client_id, telegram_id, name, phone, created_at, updated_at) "
-            "VALUES (:client_id, :telegram_id, :name, :phone, :created_at, :updated_at) "
+            "(client_id, platform_id, platform_name, name, phone, created_at, updated_at) "
+            "VALUES (:client_id, :platform_id, :platform_name, :name, :phone, :created_at, :updated_at) "
             "ON CONFLICT (client_id) "
             "DO UPDATE SET "
             "name = EXCLUDED.name, "
+            "platform_name = EXCLUDED.platform_name, "
             "phone = EXCLUDED.phone, "
             "updated_at = EXCLUDED.updated_at"
         )
         
-        self.session.execute(
-            query,
-            {
+        try:
+            self.session.execute(
+                query,
+                {
                 "client_id": self.client_id_uuid,
-                "telegram_id": self.client_id,
+                "platform_id": self.platform_id,
+                "platform_name": platform_name,
                 "name": name,
                 "phone": phone,
                 "created_at": datetime.now(self.timezone),
                 "updated_at": datetime.now(self.timezone)
             }
-        )
-        self.session.commit()
+            )
+            self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            raise e
 
     def update_transaction(
         self,
@@ -384,16 +402,20 @@ class DataInserter:
         self._transaction_exists(transaction_id)
         self._has_active_subscription()
         
-        update_values = {k: v for k, v in data.items()}
+        update_values = {k: v for k, v in data.items() if k not in ["client_id", "transaction_id", "platform_id"]}
 
-        self._execute_update(
-            table=self.transactions_table,
-            set_values=update_values,
-            where_condition=f"""
+        try:
+            self._execute_update(
+                table=self.transactions_table,
+                set_values=update_values,
+                where_condition=f"""
                 client_id = '{self.client_id_uuid}'
                 AND transaction_id = {transaction_id}
-            """
-        )
+                """
+            )
+        except Exception as e:
+            self.session.rollback()
+            raise e
 
         return update_values
     
@@ -414,10 +436,14 @@ class DataInserter:
         self._client_exists()
         self._has_active_subscription()
 
-        self._execute_delete(
-            table=self.transactions_table,
-            values=data
-        )
+        try:
+            self._execute_delete(
+                table=self.transactions_table,
+                values=data
+            )
+        except Exception as e:
+            self.session.rollback()
+            raise e
 
 
 if __name__ == "__main__":

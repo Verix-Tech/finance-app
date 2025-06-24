@@ -18,15 +18,14 @@ class Transaction(Base):
     __tablename__ = 'transactions'
     __table_args__ = {'schema': 'public'}
 
-    __all__ = ['internal_transaction_id', 'transaction_id', 'client_id', 'transaction_revenue', 'payment_method_name', 'payment_location', 'payment_product', 'transaction_timestamp']
-
     internal_transaction_id = Column(String, primary_key=True)
     transaction_id = Column(Integer, nullable=False)
     client_id = Column(String, nullable=False)
+    transaction_type = Column(String, nullable=False)
     transaction_revenue = Column(Float)
     payment_method_name = Column(String)
-    payment_location = Column(String)
-    payment_product = Column(String)
+    payment_description = Column(String)
+    payment_category = Column(String)
     transaction_timestamp = Column(DateTime(timezone=True), nullable=False)
 
 class Client(Base):
@@ -37,7 +36,8 @@ class Client(Base):
     )
 
     client_id = Column(String, primary_key=True)
-    telegram_id = Column(String)
+    platform_id = Column(String)
+    platform_name = Column(String)
     name = Column(String)
     phone = Column(String)
     created_at = Column(String)
