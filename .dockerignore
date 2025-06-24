@@ -20,3 +20,7 @@ api/data/*
 bot/secrets/*
 bot/logs/*
 bot/.env*
+bot/utils/*.csv
+bot/utils/*.png
+bot/utils/*.ipynb
+bot/*.json

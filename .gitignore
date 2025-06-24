@@ -16,3 +16,7 @@ bot/secrets/*
 bot/logs/*
 bot/.env*
 api/data/*
+bot/utils/*.csv
+bot/utils/*.png
+bot/utils/*.ipynb
+bot/*.json
