@@ -5,7 +5,6 @@ sys.path.append(str(Path(__file__).parent.parent))
 import pandas as pd
 import logging
 from os import getenv
-from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy import text
 from celery import Celery, states
@@ -14,6 +13,8 @@ from sqlalchemy.exc import DataError, ProgrammingError, StatementError
 
 from database_manager.connector import DatabaseManager
 from database_manager.models.models import Transaction
+from utils import get_start_end_date
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -66,22 +67,21 @@ def generate_extract(
         client_id: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        days_before: Optional[int] = None,
-        detailed: Optional[dict] = None
-    ) -> dict:
+        days_before: Optional[str] = None,
+        aggr: Optional[dict] = None
+    ) -> str:
     """Generate extract for a client with proper error handling."""
     try:
         logger.info(f"Starting extract generation for client_id: {client_id}")
         
-        columns = ['client_id', 'transaction_timestamp', 'transaction_revenue', 'payment_location', 'payment_method_name', 'payment_product'] if detailed else ['client_id', 'transaction_timestamp', 'transaction_revenue']
+        columns = ['client_id', 'transaction_timestamp', 'transaction_revenue', 'payment_description', 'payment_category', 'transaction_type'] if aggr else ['client_id', 'transaction_timestamp', 'transaction_revenue']
 
         if not start_date and not days_before:
             error_msg = AppConfig.VALIDATION_ERROR["start_date_or_days_before_required"]
             logger.error(f"Validation error: {error_msg}")
             raise ValueError(error_msg)
         elif days_before:
-            start_date = (datetime.now() - timedelta(days=days_before)).strftime('%Y-%m-%d')
-            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date, end_date = get_start_end_date(int(days_before))
         elif start_date and not end_date:
             end_date = start_date
 
@@ -100,32 +100,30 @@ def generate_extract(
 
             df['transaction_timestamp'] = pd.to_datetime(df['transaction_timestamp'])
 
-            if detailed:
-                if detailed["mode"] == "day":
-                    df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y-%m-%d')
-                elif detailed["mode"] == "week":
-                    df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y-%m-%W')
-                elif detailed["mode"] == "month":
-                    df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y-%m')
-                elif detailed["mode"] == "year":
-                    df['transaction_timestamp'] = df['transaction_timestamp'].dt.strftime('%Y')
+            if aggr and aggr["activated"] == True:
+                if aggr["mode"] == "day":
+                    df = df.set_index('transaction_timestamp').resample('D').agg({'transaction_revenue': 'sum'}).reset_index()
+                elif aggr["mode"] == "week":
+                    df = df.set_index('transaction_timestamp').resample('W').agg({'transaction_revenue': 'sum'}).reset_index()
+                elif aggr["mode"] == "month":
+                    df = df.set_index('transaction_timestamp').resample('ME').agg({'transaction_revenue': 'sum'}).reset_index()
+                elif aggr["mode"] == "year":
+                    df = df.set_index('transaction_timestamp').resample('YE').agg({'transaction_revenue': 'sum'}).reset_index()
                 else:
-                    error_msg = AppConfig.VALIDATION_ERROR["invalid_detailed_mode"]
+                    error_msg = AppConfig.VALIDATION_ERROR["invalid_aggr_mode"]
                     logger.error(f"Validation error: {error_msg}")
                     self.update_state(state=states.FAILURE, meta={
                         'exc_type': str(ValueError),
                         'exc_message': error_msg
                     })
                     raise ValueError(error_msg)
-                    
-            if not detailed or detailed["activated"] == False:
-                extrato = df.groupby(['transaction_timestamp'])['transaction_revenue'].sum()
-            else:
-                extrato = df
-                
-            result = extrato.to_csv('data/data.csv', index=True)
+
+            else: pass
+            
+            df["transaction_timestamp"] = df["transaction_timestamp"].dt.strftime('%Y-%m-%d')
+            result = df.to_csv(index=True)
             logger.info(f"Extract generation completed successfully for client_id: {client_id}")
-            return {"status": "success", "message": "Extract generated successfully", "data": result}
+            return result
             
     except ValueError as e:
         error_msg = f"Validation error in generate_extract: {str(e)}"
