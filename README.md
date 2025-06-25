@@ -161,6 +161,36 @@ docker-compose logs finance-api
 ### Health & Monitoring
 - `GET /health` - Check API health status
 
+## Telegram Bot
+
+The application includes a Telegram bot for natural language financial management:
+
+### Bot Features
+- **Natural Language Processing**: Users can interact in Portuguese using natural language
+- **Personalized Responses**: Bot uses user's name for personalized greetings and responses
+- **Transaction Management**: Create, update, and delete transactions via chat
+- **Financial Reports**: Generate and receive financial reports as images
+- **User Registration**: Automatic user registration via phone number sharing
+- **Smart Categorization**: Automatic categorization of transactions based on descriptions
+
+### Bot Capabilities
+- **Transaction Creation**: "Pizza 20" → Creates expense transaction
+- **Report Generation**: "Relatório dos últimos 7 dias" → Generates financial report
+- **Transaction Updates**: "Atualize a transação 2" → Updates existing transaction
+- **Personalized Greetings**: Uses user's name for friendly interactions
+
+### User Experience
+- **Friendly Interface**: Emoji-rich responses in Portuguese
+- **Smart Recognition**: Understands various input formats and contexts
+- **Automatic Processing**: No need to specify exact formats
+- **Visual Reports**: Receives reports as formatted images
+
+### Technical Features
+- **GPT-4 Integration**: Advanced natural language understanding
+- **User Caching**: Efficient user existence checking
+- **Message Logging**: Complete conversation history in MongoDB
+- **Error Handling**: Graceful error handling with user-friendly messages
+
 ## Development
 
 ### Using Make Commands
