@@ -153,8 +153,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
-@app.post("/generate-data")
-async def generate_data(
+@app.post("/generate-report")
+async def generate_report(
     request: Request,
     current_user: User = Depends(get_current_active_user)
 ):
@@ -166,6 +166,7 @@ async def generate_data(
         end_date = data.get("end_date") or None
         days_before = data.get("days_before") or None
         aggr = data.get("aggr") or None
+        filter = data.get("filter") or None
 
         client_id = db_service.inserter(data["platform_id"]).client_id_uuid
         
@@ -188,7 +189,8 @@ async def generate_data(
                 start_date=start_date, 
                 end_date=end_date, 
                 days_before=days_before, 
-                aggr=aggr
+                aggr=aggr,
+                filter=filter
             )
             logger.info(f"Celery task started successfully with ID: {task.id}")
         except Exception as celery_error:
