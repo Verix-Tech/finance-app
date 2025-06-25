@@ -20,10 +20,10 @@ def format_report(csv: str, aggr: bool = False) -> pd.DataFrame:
     csv_buffer = io.StringIO(csv)
     csv_buffer.seek(0)
 
-    columns = ["Data", "Descricao", "Valor", "Categoria", "Tipo"] if not aggr else ["Data", "Valor"]
+    columns = ["ID", "Data", "Descricao", "Valor", "Categoria", "Tipo"] if not aggr else ["Data", "Valor"]
     
     report = pd.read_csv(csv_buffer)
-    report = report[["transaction_timestamp", "payment_description", "transaction_revenue", "payment_category", "transaction_type"]] if not aggr else report[["transaction_timestamp", "transaction_revenue"]]
+    report = report[["transaction_id", "transaction_timestamp", "payment_description", "transaction_revenue", "payment_category", "transaction_type"]] if not aggr else report[["transaction_timestamp", "transaction_revenue"]]
 
     report.columns = columns
     
