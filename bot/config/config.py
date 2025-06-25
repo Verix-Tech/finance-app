@@ -18,17 +18,41 @@ with open(getenv("SECRETS") or "", "r", encoding="utf-8") as file:
 class BotConfig:
     def __init__(self):
         self.client = OpenAI(api_key=SECRETS.get("OPENAI_API_KEY") or "")
-        with open("prompt/prompt.txt", "r", encoding="utf-8") as file:
+        with open("prompt/prompt.md", "r", encoding="utf-8") as file:
             self.prompt = file.read()
         self.model = "gpt-4.1-nano"
         self.TELEGRAM_TOKEN = SECRETS.get("TELEGRAM_BOT_TOKEN") or ""
+        self.CATEGORIAS = {
+            "1": "Alimentação",
+            "2": "Saúde",
+            "3": "Salário",
+            "4": "Investimentos",
+            "5": "Pet",
+            "6": "Contas",
+            "7": "Educação",
+            "8": "Lazer",
+            "0": "Outros"
+        }
+        self.METODOS_PAGAMENTO = {
+            "1": "Pix",
+            "2": "Crédito",
+            "3": "Débito",
+            "4": "Dinheiro",
+            "0": "Não informado"
+        }
     
-    def generate_response(self, user_message: str) -> dict:
+    def generate_response(self, user_message: str, user_name: Optional[str] = None) -> dict:
         logger.info(f"Generating response for user message: {user_message}")
+        
+        # Create system prompt with user name if provided
+        system_prompt = self.prompt
+        if user_name:
+            system_prompt = f"{self.prompt}\n\n**Informação do usuário:** O nome do usuário é {user_name}. Use este nome para personalizar suas respostas e cumprimentos."
+        
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": self.prompt},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
             response_format={"type": "json_object"}
