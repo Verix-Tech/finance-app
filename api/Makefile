@@ -13,6 +13,14 @@ drop_tables:
 create_user:
 	python database_manager/manage_tables.py create_users
 
+# Create payment methods on database
+create_payment_methods:
+	python database_manager/manage_tables.py create_payment_methods
+
+# Create payment categories on database
+create_payment_categories:
+	python database_manager/manage_tables.py create_payment_categories
+
 # Debugging
 generate_data:
 	python workers/main.py
@@ -26,6 +34,6 @@ test_celery_redis_connection:
 	python tests/test_redis_connection.py
 
 # Start API
-start_api: create_tables create_user
+start_api: create_tables create_user create_payment_methods create_payment_categories
 	uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 

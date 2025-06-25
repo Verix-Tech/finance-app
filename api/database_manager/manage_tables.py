@@ -7,8 +7,9 @@ sys.path.append(str(root_dir))
 import logging
 from os import getenv
 from urllib.parse import quote_plus
-from database_manager.connector import DatabaseManager
-from database_manager.models.models import Base, Transaction, Client
+from sqlalchemy import text
+from database_manager.connector import DatabaseManager  
+from database_manager.models.models import Base, Transaction, Client, PaymentMethod, PaymentCategory
 from auth.auth import create_user, UserCreate
 
 
@@ -73,6 +74,24 @@ def create_users():
         logger.info("Admin user created successfully!")
     except Exception as e:
         logger.error(f"Error creating admin user: {str(e)}")
+        db_session.rollback()
+
+def create_payment_methods():
+    try:
+        db_session.execute(text("INSERT INTO payment_methods (payment_method_id, payment_method_name) VALUES ('1', 'Pix'), ('2', 'Crédito'), ('3', 'Débito'), ('4', 'Dinheiro')"))
+        db_session.commit()
+        logger.info("Payment methods created successfully!")
+    except Exception as e:
+        logger.error(f"Error creating payment methods: {str(e)}")
+        db_session.rollback()
+
+def create_payment_categories():
+    try:
+        db_session.execute(text("INSERT INTO payment_categories (payment_category_id, payment_category_name) VALUES ('1', 'Alimentação'), ('2', 'Saúde'), ('3', 'Salário'), ('4', 'Investimentos'), ('5', 'Pet'), ('6', 'Contas'), ('7', 'Educação'), ('8', 'Lazer'), ('0', 'Outros')"))
+        db_session.commit()
+        logger.info("Payment categories created successfully!")
+    except Exception as e:
+        logger.error(f"Error creating payment categories: {str(e)}")
         db_session.rollback()
 
 # Calling functions
