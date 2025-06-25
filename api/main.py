@@ -374,9 +374,9 @@ async def create_transaction(
         transaction_data = inserter.insert_transaction(
             transaction_revenue=data.get("transaction_revenue"), 
             transaction_timestamp=data.get("transaction_timestamp"),
-            payment_method_name=data.get("payment_method_name"),
+            payment_method_id=data.get("payment_method_id"),
             payment_description=data.get("payment_description"),
-            payment_category=data.get("payment_category"),
+            payment_category_id=data.get("payment_category_id"),
             transaction_type=data.get("transaction_type")
         )
 

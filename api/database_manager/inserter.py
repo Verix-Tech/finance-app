@@ -287,9 +287,9 @@ class DataInserter:
         transaction_revenue: float,
         transaction_type: str,
         transaction_timestamp: Optional[str] = None,
-        payment_method_name: Optional[str] = None,
+        payment_method_id: Optional[str] = None,
         payment_description: Optional[str] = None,
-        payment_category: Optional[str] = None
+        payment_category_id: Optional[str] = None
     ) -> Dict:
         """
         Insert a transaction record for the client.
@@ -310,7 +310,7 @@ class DataInserter:
         
         _internal_transaction_id = self._encrypt_data(
             f"{self.client_id_uuid}:{datetime.now(self.timezone)}:"
-            f"{transaction_revenue}:{payment_method_name}:"
+            f"{transaction_revenue}:{payment_method_id}:"
             f"{payment_description}"
         )
         
@@ -322,9 +322,9 @@ class DataInserter:
             "transaction_id": self.get_transaction_id,
             "transaction_revenue": transaction_revenue,
             "transaction_type": transaction_type,
-            "payment_method_name": payment_method_name,
+            "payment_method_id": payment_method_id,
             "payment_description": payment_description,
-            "payment_category": payment_category
+            "payment_category_id": payment_category_id
         }
         
         try:
