@@ -13,10 +13,25 @@ from sqlalchemy.exc import DataError, ProgrammingError, StatementError
 
 from database_manager.connector import DatabaseManager
 from database_manager.models.models import Transaction
-from utils import get_start_end_date
+from utils import get_start_end_date, make_where_string, make_aggr_logic
 
 
 # Configure logging
+def configure_logging():
+    """Configure application logging."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("logs/workers.log"),
+            logging.StreamHandler()
+        ]
+    )
+    # Reduce noise from libraries
+    logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
+    logging.getLogger("psycopg2").setLevel(logging.ERROR)
+
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # Get Redis configuration with fallback
@@ -55,9 +70,9 @@ class AppConfig:
     SYNTAX_ERROR = "erro de sintaxe, verifique os valores"
     VALIDATION_ERROR = {
         "start_date_or_days_before_required": "start_date or days_before must be provided",
-        "invalid_detailed_mode": "Invalid detailed mode",
-        "generate_extract_error": "Unexpected error in generate_extract",
-        "unexpected_error": "Unexpected error in generate_extract"
+        "invalid_aggr_mode": "Invalid aggr mode",
+        "Exception": "Unexpected error in generate_extract",
+        "ValueError": "Validation error in generate_extract"
     }
 
 
@@ -68,13 +83,14 @@ def generate_extract(
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         days_before: Optional[str] = None,
+        filter: Optional[dict] = None,
         aggr: Optional[dict] = None
     ) -> str:
     """Generate extract for a client with proper error handling."""
     try:
         logger.info(f"Starting extract generation for client_id: {client_id}")
         
-        columns = ['client_id', 'transaction_timestamp', 'transaction_revenue', 'payment_description', 'payment_category', 'transaction_type'] if aggr else ['client_id', 'transaction_timestamp', 'transaction_revenue']
+        columns = ['client_id', 'transaction_id', 'transaction_timestamp', 'transaction_revenue', 'payment_description', 'payment_category_id', 'transaction_type'] if aggr else ['client_id', 'transaction_timestamp', 'transaction_revenue']
 
         if not start_date and not days_before:
             error_msg = AppConfig.VALIDATION_ERROR["start_date_or_days_before_required"]
@@ -85,6 +101,7 @@ def generate_extract(
         elif start_date and not end_date:
             end_date = start_date
 
+        where_string = make_where_string(filter) if filter else "1=1"
         query = f"""
                 SELECT 
                     {', '.join(columns)}
@@ -92,6 +109,7 @@ def generate_extract(
                 WHERE
                     client_id = '{client_id}'
                     AND date(transaction_timestamp) BETWEEN '{start_date}' AND '{end_date}'
+                    AND {where_string}
                 """
         
         with db_manager.get_session() as session:
@@ -100,24 +118,16 @@ def generate_extract(
 
             df['transaction_timestamp'] = pd.to_datetime(df['transaction_timestamp'])
 
+
             if aggr and aggr["activated"] == True:
-                if aggr["mode"] == "day":
-                    df = df.set_index('transaction_timestamp').resample('D').agg({'transaction_revenue': 'sum'}).reset_index()
-                elif aggr["mode"] == "week":
-                    df = df.set_index('transaction_timestamp').resample('W').agg({'transaction_revenue': 'sum'}).reset_index()
-                elif aggr["mode"] == "month":
-                    df = df.set_index('transaction_timestamp').resample('ME').agg({'transaction_revenue': 'sum'}).reset_index()
-                elif aggr["mode"] == "year":
-                    df = df.set_index('transaction_timestamp').resample('YE').agg({'transaction_revenue': 'sum'}).reset_index()
+                if aggr["mode"] is not None:
+                    df = make_aggr_logic(aggr["mode"], df)
                 else:
-                    error_msg = AppConfig.VALIDATION_ERROR["invalid_aggr_mode"]
-                    logger.error(f"Validation error: {error_msg}")
                     self.update_state(state=states.FAILURE, meta={
                         'exc_type': str(ValueError),
-                        'exc_message': error_msg
+                        'exc_message': AppConfig.VALIDATION_ERROR["invalid_aggr_mode"]
                     })
-                    raise ValueError(error_msg)
-
+                    raise ValueError(AppConfig.VALIDATION_ERROR["invalid_aggr_mode"])
             else: pass
             
             df["transaction_timestamp"] = df["transaction_timestamp"].dt.strftime('%Y-%m-%d')
@@ -125,24 +135,8 @@ def generate_extract(
             logger.info(f"Extract generation completed successfully for client_id: {client_id}")
             return result
             
-    except ValueError as e:
-        error_msg = f"Validation error in generate_extract: {str(e)}"
-        logger.error(error_msg)
-        self.update_state(state=states.FAILURE, meta={
-            'exc_type': type(e).__name__,
-            'exc_message': str(e)
-        })
-        raise Ignore()
-    except (DataError, ProgrammingError, StatementError) as e:
-        error_msg = f"Database error in generate_extract: {str(e)}"
-        logger.error(error_msg)
-        self.update_state(state=states.FAILURE, meta={
-            'exc_type': type(e).__name__,
-            'exc_message': str(e)
-        })
-        raise Ignore()
-    except Exception as e:
-        error_msg = AppConfig.VALIDATION_ERROR["unexpected_error"]
+    except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
+        error_msg = AppConfig.VALIDATION_ERROR[type(e).__name__] if type(e).__name__ in AppConfig.VALIDATION_ERROR else AppConfig.DATABASE_ERROR
         logger.error(error_msg)
         self.update_state(state=states.FAILURE, meta={
             'exc_type': type(e).__name__,
