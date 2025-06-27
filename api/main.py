@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.exc import DataError, ProgrammingError, StatementError
 
 from workers.main import generate_extract
+from utils.utils import get_limits
 
 from database_manager.connector import DatabaseManager, DatabaseMonitor
 from database_manager.inserter import DataInserter
@@ -370,6 +371,7 @@ async def create_transaction(
     try:
         data = await request.json()
         inserter = DataInserter(db_service.get_session(), data["platform_id"])
+        client_id = inserter.client_id_uuid
         
         transaction_data = inserter.insert_transaction(
             transaction_revenue=data.get("transaction_revenue"), 
@@ -381,6 +383,7 @@ async def create_transaction(
         )
 
         data["transaction_id"] = transaction_data["transaction_id"]
+        data["limit_value"] = get_limits(client_id=client_id, category_id=data.get("payment_category_id"))
         
         logger.info("Transaction created successfully")
         return ResponseHandler.create_success(
@@ -401,6 +404,41 @@ async def create_transaction(
             e,
             status_code=status.HTTP_403_FORBIDDEN
         )
+
+@app.post("/create-limit")
+async def create_limit(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Create a new limit."""
+    try:
+        data = await request.json()
+        inserter = DataInserter(db_service.get_session(), data["platform_id"])
+
+        limit_data = inserter.upsert_limit(
+            category_id=data.get("category_id"),
+            limit_value=data.get("limit_value")
+        )
+
+        return ResponseHandler.create_success(
+            data=data,
+            message=f"Limit created for client: {inserter.platform_id}!"
+        )
+        
+    except ClientNotExistsError as e:
+        logger.error(AppConfig.CLIENT_NOT_EXISTS)
+        return ResponseHandler.create_error(AppConfig.CLIENT_NOT_EXISTS, e)
+    except (ProgrammingError, StatementError) as e:
+        logger.error(AppConfig.DATABASE_ERROR)
+        return ResponseHandler.create_error(AppConfig.DATABASE_ERROR, e)
+    except SubscriptionError as e:
+        logger.error(AppConfig.NO_SUBSCRIPTION)
+        return ResponseHandler.create_error(
+            AppConfig.NO_SUBSCRIPTION,
+            e,
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+
 
 @app.post("/update-transaction")
 async def update_transaction(

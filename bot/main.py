@@ -102,10 +102,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     user_name = update.effective_user.first_name
 
-    response = BotConfig().generate_response(user_message, user_name)
+    response = BotConfig().generate_response(user_message, user_name, str(user_id))
     _type = response.get("api_endpoint", "").split("/")[1] if response.get("api_endpoint") else None
 
     if _type == "create-transaction":
+        response["params"]["payment_category_id"] = response.get("params", {}).get("payment_category_id", "0")
+        response["params"]["payment_method_id"] = response.get("params", {}).get("payment_method_id", "0")
+
         if not response["params"].get("transaction_timestamp"):
             response["params"]["transaction_timestamp"] = datetime.now().strftime("%d/%m/%Y")
         else:
@@ -116,11 +119,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             response["params"]["start_date"] = utils.format_date_with_year(response["params"]["start_date"])
             response["params"]["end_date"] = utils.format_date_with_year(response["params"]["end_date"])
+    elif _type == "update-transaction":
+        if response["params"].get("transaction_timestamp"):
+                response["params"]["transaction_timestamp"] = utils.format_date_with_year(response["params"]["transaction_timestamp"]) 
 
     message_id = str(uuid.uuid4())
-
-    response["params"]["payment_category"] = response.get("params", {}).get("payment_category", "0")
-    response["params"]["payment_method_name"] = response.get("params", {}).get("payment_method_name", "0")
 
     # Insert messages into MongoDBdatabase
     NoSQLDBConfig().insert_messages([
@@ -146,8 +149,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         response["params"]["transaction_type"],
                         response["params"]["transaction_revenue"],
                         response["params"]["payment_description"],
-                        BotConfig().CATEGORIAS[response["params"]["payment_category"]],
-                        BotConfig().METODOS_PAGAMENTO[response["params"]["payment_method_name"]],
+                        BotConfig().CATEGORIAS[response["params"]["payment_category_id"]],
+                        BotConfig().METODOS_PAGAMENTO[response["params"]["payment_method_id"]],
                         response["params"]["transaction_timestamp"],
                         db_response.json()["data"]["transaction_id"],
                         message_id

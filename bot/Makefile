@@ -7,5 +7,8 @@ run:
 run_debug:
 	python main.py
 
+run_test:
+	python test_accuracy.py
+
 debug_config:
 	python config/config.py

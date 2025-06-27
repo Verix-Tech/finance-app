@@ -144,6 +144,26 @@ def generate_extract(
         })
         raise Ignore()
 
+# def get_limits_debug(client_id: str, limit_category: str):
+#     """Get limits for a client."""
+#     try:
+#         logger.info(f"Starting limits retrieval for client_id: {client_id}")
+        
+#         query = f"""
+#             SELECT * FROM limits WHERE client_id = '{client_id}' AND limit_category = '{limit_category}'
+#         """
+        
+#         with db_manager.get_session() as session:
+#             dados = session.execute(text(query)).all()
+#             df = pd.DataFrame(dados)
+#             logger.info(f"Limits retrieval completed successfully for client_id: {client_id}")
+#             return df
+#     except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
+#         error_msg = AppConfig.VALIDATION_ERROR[type(e).__name__] if type(e).__name__ in AppConfig.VALIDATION_ERROR else AppConfig.DATABASE_ERROR
+#         logger.error(error_msg)
+#         raise Ignore()
+    
+# print(get_limits_debug(client_id='4dfd378d-5782-44e4-8872-35778552abed', limit_category='Alimentação'))
 
 # def generate_extrato(
 #         client_id: str,

@@ -1,6 +1,33 @@
-import pandas as pd
-from datetime import datetime, timedelta
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 
+import pandas as pd
+import logging
+from datetime import datetime, timedelta
+from sqlalchemy import text
+from sqlalchemy.exc import DataError, ProgrammingError, StatementError
+from database_manager.connector import DatabaseManager
+
+
+def configure_logging():
+    """Configure application logging."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("logs/utils.log"),
+            logging.StreamHandler()
+        ]
+    )
+    # Reduce noise from libraries
+    logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
+    logging.getLogger("psycopg2").setLevel(logging.ERROR)
+
+configure_logging()
+logger = logging.getLogger(__name__)
+
+db_manager = DatabaseManager()
 
 def get_start_end_date(days_before: int) -> tuple[str, str]:
     """
@@ -34,13 +61,20 @@ def make_aggr_logic(mode: str, df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-df = pd.DataFrame({
-    "transaction_timestamp": ["2025-01-01", "2025-01-02", "2025-01-03"],
-    "transaction_revenue": [100, 200, 300]
-})
+def get_limits(client_id: str, category_id: str) -> float:
+    """Get limits for a client."""
+    query = text("""
+        SELECT * FROM limits WHERE client_id = :client_id AND category_id = :category_id
+    """)
 
-aggr = {"mode": "day", "activated": True}
-
-df['transaction_timestamp'] = pd.to_datetime(df['transaction_timestamp'])
-
-print(make_aggr_logic(aggr["mode"], df))
+    with db_manager.get_session() as session:
+        dados = session.execute(query, {"client_id": client_id, "category_id": category_id}).all()
+        
+        # If no data is returned, return 0.0 (no limit)
+        if not dados:
+            logger.info(f"No limit found for client_id: {client_id}, category: {category_id}")
+            return 0.0
+        
+        df = pd.DataFrame(dados)
+        
+        return df['limit_value'].values[0]

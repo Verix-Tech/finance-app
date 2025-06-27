@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Float, Integer, DateTime, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, Float, Integer, DateTime, UniqueConstraint, Index
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -27,6 +27,20 @@ class Transaction(Base):
     payment_description = Column(String)
     payment_category_id = Column(String)
     transaction_timestamp = Column(DateTime(timezone=True), nullable=False)
+
+class Limits(Base):
+    __tablename__ = 'limits'
+    __table_args__ = (
+        UniqueConstraint('client_id', 'category_id', name='unique_client_id_category_id'),
+        {'schema': 'public'}
+    )
+
+    limit_id = Column(String, primary_key=True)
+    client_id = Column(String, nullable=False)
+    category_id = Column(String, nullable=False)
+    limit_value = Column(Float)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
 
 class PaymentMethod(Base):
     __tablename__ = 'payment_methods'

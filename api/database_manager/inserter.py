@@ -28,7 +28,9 @@ class DataInserter:
         self.platform_id = platform_id
         self.customers_table = "clients"
         self.transactions_table = "transactions"
-        self.client_id_uuid = str(uuid.uuid4()) if not self._get_client_id() else self._get_client_id()
+        self.limits_table = "limits"
+        client_id_result = self._get_client_id()
+        self.client_id_uuid = client_id_result if client_id_result is not None else str(uuid.uuid4())
         
         # Configure logging
         self._configure_logging()
@@ -63,12 +65,12 @@ class DataInserter:
         hasher.update(data.encode("utf-8"))
         return hasher.hexdigest()
     
-    def _get_client_id(self) -> Union[str, bool]:
+    def _get_client_id(self) -> Optional[str]:
         """
         Get the client ID.
         
         Returns:
-            The client ID
+            The client ID if found, None otherwise
         """
         query = text(
             f"SELECT client_id FROM {self.customers_table} WHERE platform_id = :platform_id"
@@ -79,7 +81,7 @@ class DataInserter:
         ).first()
 
         if not result:
-            return False
+            return None
         return result[0]
     
     def _execute_update(self, table: str, set_values: dict, where_condition: str) -> None:
@@ -337,6 +339,50 @@ class DataInserter:
             raise e
 
         return transaction_data
+
+    def upsert_limit(
+        self,
+        category_id: str,
+        limit_value: float
+    ) -> None:
+        """
+        Insert a limit record for the client.
+
+        Args:
+            limit_category: The limit category
+            limit_value: The limit value
+        Raises:
+            ClientNotExistsError: If client doesn't exist
+        """
+        self._client_exists()
+
+        limit_data = {
+            "limit_id": str(uuid.uuid4()),
+            "client_id": self.client_id_uuid,
+            "category_id": category_id,
+            "limit_value": limit_value,
+            "created_at": datetime.now(self.timezone),
+            "updated_at": datetime.now(self.timezone)
+        }
+
+        query = text(
+            f"INSERT INTO {self.limits_table} "
+            "VALUES (:limit_id, :client_id, :category_id, :limit_value, :created_at, :updated_at) "
+            "ON CONFLICT (client_id, category_id) "
+            "DO UPDATE SET "
+            "limit_value = EXCLUDED.limit_value, "
+            "updated_at = EXCLUDED.updated_at"
+        )
+
+        try:
+            self.session.execute(
+                query,
+                limit_data
+            )
+            self.session.commit()
+        except Exception as e:
+            self.session.rollback()
+            raise e
     
     def upsert_client(self, platform_name: str, name: str, phone: str) -> None:
         """

@@ -22,8 +22,11 @@ create_payment_categories:
 	python database_manager/manage_tables.py create_payment_categories
 
 # Debugging
-generate_data:
+workers_debug:
 	python workers/main.py
+
+utils_debug:
+	python utils/utils.py
 
 # Start Celery worker
 start_celery:
