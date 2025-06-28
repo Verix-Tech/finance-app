@@ -9,6 +9,9 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 from typing import Optional
 
 
+## TODO:
+# - [ ] Refatorar o código
+
 def configure_logging():
     """Configure application logging."""
     logging.basicConfig(
@@ -38,9 +41,9 @@ def check_user_exists(user_id: int) -> bool:
     # If not in cache, make API request
     logger.info(f"User {user_id} not in cache, checking API")
     response = SQLDBConfig().send_request(
-        endpoint="/client-exists",
+        endpoint="/users/exists",
         endpoint_var="",
-        method="get",
+        method="post",
         params={"platform_id": user_id_str}
     )
     exists = response.status_code not in (502, 404)
@@ -76,7 +79,7 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"Received phone number {phone_number} from user {user_id}")
     SQLDBConfig().send_request(
-        endpoint="/create-user",
+        endpoint="/users/create",
         endpoint_var="",
         method="post",
         params={"platform_id": str(user_id), "platform_name": "telegram", "phone": phone_number, "name": user_name}
@@ -103,9 +106,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
 
     response = BotConfig().generate_response(user_message, user_name, str(user_id))
-    _type = response.get("api_endpoint", "").split("/")[1] if response.get("api_endpoint") else None
+    endpoint = response.get("api_endpoint", "") if response.get("api_endpoint") else None
 
-    if _type == "create-transaction":
+    if endpoint == "/transactions/create":
         response["params"]["payment_category_id"] = response.get("params", {}).get("payment_category_id", "0")
         response["params"]["payment_method_id"] = response.get("params", {}).get("payment_method_id", "0")
 
@@ -113,22 +116,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response["params"]["transaction_timestamp"] = datetime.now().strftime("%d/%m/%Y")
         else:
             response["params"]["transaction_timestamp"] = utils.format_date_with_year(response["params"]["transaction_timestamp"])
-    elif _type == "generate-report":
+    elif endpoint == "/transactions/update":
+        if response["params"].get("transaction_timestamp"):
+                response["params"]["transaction_timestamp"] = utils.format_date_with_year(response["params"]["transaction_timestamp"]) 
+    elif endpoint == "/reports/generate":
         if not response["params"].get("start_date") or not response["params"].get("end_date"): 
             pass
         else:
             response["params"]["start_date"] = utils.format_date_with_year(response["params"]["start_date"])
             response["params"]["end_date"] = utils.format_date_with_year(response["params"]["end_date"])
-    elif _type == "update-transaction":
-        if response["params"].get("transaction_timestamp"):
-                response["params"]["transaction_timestamp"] = utils.format_date_with_year(response["params"]["transaction_timestamp"]) 
 
     message_id = str(uuid.uuid4())
 
     # Insert messages into MongoDBdatabase
     NoSQLDBConfig().insert_messages([
         {"message_id": message_id, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "message": user_message, "is_bot": False, "client_id": str(user_id), "metadata": {"name": user_name}},
-        {"message_id": message_id, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "message": response.get("message", "Desculpe, não consegui gerar uma resposta."), "type": _type, "is_bot": True, "client_id": str(user_id), "metadata": response}
+        {"message_id": message_id, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "message": response.get("message", "Desculpe, não consegui gerar uma resposta."), "type": endpoint, "is_bot": True, "client_id": str(user_id), "metadata": response}
     ])
 
     await update.message.reply_text(message_id + "\n" + response.get("message", "Desculpe, não consegui gerar uma resposta."))
@@ -142,8 +145,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             platform_id=str(user_id)
         )
 
-        if _type == "create-transaction":
-            if db_response.status_code == 201:
+        if endpoint == "/transactions/create":
+            if db_response.status_code == 200:
                 with open("messages/inserted_transaction.txt", "r", encoding="utf-8") as file:
                     await update.message.reply_text(file.read().format(
                         response["params"]["transaction_type"],
@@ -157,21 +160,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ))
                 
                 limit_response = SQLDBConfig().send_request(
-                    endpoint="/limit-check",
+                    endpoint="/limits/check",
                     endpoint_var="",
                     method="post",
                     params={"category_id": response["params"]["payment_category_id"]},
                     platform_id=str(user_id)
                 )
             
-                if limit_response.status_code == 201:
+                if limit_response.status_code == 200:
                     if limit_response.json()["data"]["limit_exceeded"] == True:
                         await update.message.reply_text(message_id + f"\nVocê atingiu o seu limite de gastos de '{BotConfig().CATEGORIAS[response['params']['payment_category_id']]}' deste mês. 🚫")
                     elif limit_response.json()["data"]["total_revenue"] >= utils.get_limit_percentage(limit_response.json()["data"]["limit_value"]) and \
                         limit_response.json()["data"]["total_revenue"] < limit_response.json()["data"]["limit_value"]:
                         await update.message.reply_text(message_id + f"\nVocê atingiu 90% do seu limite de gastos de '{BotConfig().CATEGORIAS[response['params']['payment_category_id']]}' deste mês. 🚫")
                 
-        elif _type == "generate-report":
+        elif endpoint == "/reports/generate":
             status_code = 0
             while status_code != 200:
                 status_code = db_response.status_code
@@ -193,18 +196,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text(message_id + "\n" + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
                     return
                 
-        elif _type == "update-transaction":
-            if db_response.status_code == 201:
+        elif endpoint == "/transactions/update":
+            if db_response.status_code == 200:
                 await update.message.reply_text(message_id + "\nTransação atualizada com sucesso!")
             else:
                 await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
-        elif _type == "delete-transaction":
-            if db_response.status_code == 201:
+        elif endpoint == "/transactions/delete":
+            if db_response.status_code == 200:
                 await update.message.reply_text(message_id + "\nTransação(ões) deletada(s) com sucesso!")
             else:
                 await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
-        elif _type == "create-limit":
-            if db_response.status_code == 201:
+        elif endpoint == "/limits/create":
+            if db_response.status_code == 200:
                 await update.message.reply_text(message_id + "\nLimite criado com sucesso!")
             else:
                 await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")

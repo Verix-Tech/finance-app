@@ -176,9 +176,9 @@ class BotConfig:
                 endpoint = response["api_endpoint"]
                 params = response["params"]
                 
-                if endpoint == "/create-transaction":
+                if endpoint == "/transactions/create":
                     if not params.get("transaction_revenue") or not params.get("transaction_type"):
-                        logger.warning("Missing required fields for create-transaction")
+                        logger.warning("Missing required fields for transactions/create")
                         return False
                     
                     # Validate transaction_revenue is numeric
@@ -188,20 +188,20 @@ class BotConfig:
                         logger.warning("Invalid transaction_revenue value")
                         return False
                 
-                elif endpoint == "/generate-report":
+                elif endpoint == "/reports/generate":
                     # Must have either days_before OR start_date+end_date
                     has_days = "days_before" in params
                     has_dates = "start_date" in params and "end_date" in params
                     if not (has_days or has_dates):
-                        logger.warning("Missing date parameters for generate-report")
+                        logger.warning("Missing date parameters for reports/generate")
                         return False
                     if has_days and has_dates:
                         logger.warning("Both days_before and date range specified")
                         return False
                 
-                elif endpoint == "/update-transaction":
+                elif endpoint == "/transactions/update":
                     if not params.get("transactionId"):
-                        logger.warning("Missing transactionId for update-transaction")
+                        logger.warning("Missing transactionId for transactions/update")
                         return False
                     
                     # Check for confirmation requests in update messages
@@ -211,9 +211,9 @@ class BotConfig:
                         logger.warning("Update response contains confirmation request - rejecting")
                         return False
                 
-                elif endpoint == "/delete-transaction":
+                elif endpoint == "/transactions/delete":
                     if not params.get("transaction_id"):
-                        logger.warning("Missing transaction_id for delete-transaction")
+                        logger.warning("Missing transaction_id for transactions/delete")
                         return False
             
             return True
@@ -245,7 +245,7 @@ class BotConfig:
                 
                 return {
                     "message": f"Olá {user_name or 'usuário'}! Registrei sua {transaction_type.lower()} de R$ {value:.2f}. Se precisar ajustar algo, é só me avisar! 💰",
-                    "api_endpoint": "/create-transaction",
+                    "api_endpoint": "/transactions/create",
                     "params": {
                         "transaction_revenue": value,
                         "transaction_type": transaction_type,
@@ -318,7 +318,7 @@ class SQLDBConfig:
     
     def _authenticate(self) -> dict:
         """Internal authentication method that returns the full response"""
-        endpoint = f"{self.API_URL}/token"
+        endpoint = f"{self.API_URL}/auth/token"
         response = requests.post(endpoint, data={"username": self.API_USERNAME, "password": self.API_PASSWORD})
         
         if response.status_code != 200:

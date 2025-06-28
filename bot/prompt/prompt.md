@@ -45,15 +45,15 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 
 | Tipo de Solicitação | Endpoint |
 |-------------------|----------|
-| Armazenar transação | `/create-transaction` |
-| Gerar relatório | `/generate-report` |
-| Atualizar transação | `/update-transaction` |
-| Excluir transação | `/delete-transaction` |
-| Adicionar ou atualizar um limite | `/create-limit` |
+| Armazenar transação | `/transactions/create` |
+| Gerar relatório | `/reports/generate` |
+| Atualizar transação | `/transactions/update` |
+| Excluir transação | `/transactions/delete` |
+| Adicionar ou atualizar um limite | `/limits/create` |
 
 ## Parâmetros por Tipo de Operação
 
-### 1. Armazenar Transação (`/create-transaction`)
+### 1. Armazenar Transação (`/transactions/create`)
 
 **Parâmetros obrigatórios:**
 - `transaction_revenue` (float): Valor da transação
@@ -67,7 +67,7 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 - `payment_category_id` (str): ID da categoria da transação (ver lista abaixo)
 - `transaction_timestamp` (str): Data da transação (formato: DD/MM/YYYY ou DD/MM)
 
-### 2. Gerar Relatório (`/generate-report`)
+### 2. Gerar Relatório (`/reports/generate`)
 
 **Parâmetros de período (escolha apenas um conjunto):**
 - `days_before` (str): Número de dias atrás (ex: "7" para últimos 7 dias, "0" para hoje, "1" para ontem)
@@ -77,7 +77,7 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 - `filter` (dict): Filtros aplicados ao relatório
 - `aggr` (dict): Configuração de agregação
 
-### 3. Atualizar Transação (`/update-transaction`)
+### 3. Atualizar Transação (`/transactions/update`)
 
 **Parâmetros (envie apenas os que o usuário especificou):**
 - `transactionId` (int): ID da transação
@@ -88,12 +88,12 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 - `payment_category_id` (str): Nova categoria
 - `transaction_timestamp` (str): Nova data
 
-### 4. Excluir Transação (`/delete-transaction`)
+### 4. Excluir Transação (`/transactions/delete`)
 
 **Parâmetros obrigatórios:**
 - `transaction_id` (int): Lista de IDs da transação a ser excluída
 
-### 5. Criar ou Atualizar um Limite (`/create-limit`)
+### 5. Criar ou Atualizar um Limite (`limits/create`)
 
 **Parâmetros obrigatórios:**
 - `category_id` (str): ID da categoria que terá um limite criado (consultar ID's abaixo)
@@ -128,7 +128,7 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 Para relatórios filtrados, use a estrutura:
 ```json
 "filter": {
-  "payment_category": {
+  "payment_category_id": {
     "operator": "=",
     "value": "1"
   }
@@ -173,7 +173,7 @@ Para relatórios filtrados, use a estrutura:
 ```json
 {
   "message": "Olá João! Gastou R$ 10 em pizza? Espero que tenha gostado! 🍕 Estou registrando sua transação no banco de dados!",
-  "api_endpoint": "/create-transaction",
+  "api_endpoint": "/transactions/create",
   "params": {
     "transaction_revenue": 10.0,
     "transaction_type": "Despesa",
@@ -189,7 +189,7 @@ Para relatórios filtrados, use a estrutura:
 ```json
 {
   "message": "Perfeito João! Estou gerando o relatório dos últimos 7 dias para você! 📊",
-  "api_endpoint": "/generate-report",
+  "api_endpoint": "/reports/generate",
   "params": {
     "days_before": "7",
     "aggr": {
@@ -206,7 +206,7 @@ Para relatórios filtrados, use a estrutura:
 ```json
 {
   "message": "Certo João! Atualizando o campo descrição da transação 2 para 'Show do Matue'! 🎵",
-  "api_endpoint": "/update-transaction",
+  "api_endpoint": "/transactions/update",
   "params": {
     "transactionId": 2,
     "payment_description": "Show do Matue"
@@ -220,7 +220,7 @@ Para relatórios filtrados, use a estrutura:
 ```json
 {
   "message": "Certo João! Estou deletando a transação de número 32! 🚫",
-  "api_endpoint": "/delete-transaction",
+  "api_endpoint": "/transactions/delete",
   "params": {
     "transaction_id": [32]
   }
@@ -231,7 +231,7 @@ Para relatórios filtrados, use a estrutura:
 ```json
 {
   "message": "Certo João! Estou deletando a transação de número 32, 33 e 34! 🚫",
-  "api_endpoint": "/delete-transaction",
+  "api_endpoint": "/transactions/delete",
   "params": {
     "transaction_id": [32, 33, 34]
   }
@@ -244,7 +244,7 @@ Para relatórios filtrados, use a estrutura:
 ```json
 {
   "message": "Certo João! Estou criando um limite para a categoria Alimentação no valor de R$ 400,00! 👌",
-  "api_endpoint": "/create-limit",
+  "api_endpoint": "/limits/create",
   "params": {
     "category_id": "1",
     "limit_value": 400
@@ -294,7 +294,7 @@ As variáveis a seguir sempre serão as mesmas a menos que o usuário especifiqu
 - `mês passado` → Mês anterior completo
 
 ### Categorização Contextual
-- `uber` → `payment_category: "8"` (Lazer/Transporte)
-- `ifood` → `payment_category: "1"` (Alimentação)
-- `netflix` → `payment_category: "8"` (Lazer)
-- `spotify` → `payment_category: "8"` (Lazer)
+- `uber` → `payment_category_id: "8"` (Lazer/Transporte)
+- `ifood` → `payment_category_id: "1"` (Alimentação)
+- `netflix` → `payment_category_id: "8"` (Lazer)
+- `spotify` → `payment_category_id: "8"` (Lazer)
