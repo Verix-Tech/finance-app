@@ -8,23 +8,30 @@ import logging
 from os import getenv
 from urllib.parse import quote_plus
 from sqlalchemy import text
-from database_manager.connector import DatabaseManager  
-from database_manager.models.models import Base, Transaction, Client, PaymentMethod, PaymentCategory
+from database_manager.connector import DatabaseManager
+from database_manager.models.models import (
+    Base,
+    Transaction,
+    Client,
+    PaymentMethod,
+    PaymentCategory,
+)
 from auth.auth import create_user, UserCreate
 
 
 def configure_logging():
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler("logs/manage_tables.log"),
-            logging.StreamHandler()
-        ]
+            logging.StreamHandler(),
+        ],
     )
     logging.getLogger(__file__).setLevel(logging.ERROR)
     logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
     logging.getLogger("psycopg2").setLevel(logging.ERROR)
+
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -33,6 +40,7 @@ logger = logging.getLogger(__name__)
 db_manager = DatabaseManager()
 db_manager.check_connection()
 db_session = db_manager.get_session()
+
 
 def _get_password() -> str:
     password_file = getenv("ADMIN_PASSWORD")
@@ -44,6 +52,7 @@ def _get_password() -> str:
     except FileNotFoundError:
         raise ValueError(f"Password file not found: {password_file}")
 
+
 def create_tables():
     try:
         Base.metadata.create_all(db_session.get_bind())
@@ -51,6 +60,7 @@ def create_tables():
     except Exception as e:
         logger.error(f"Error creating tables: {str(e)}")
         db_session.rollback()
+
 
 def drop_tables():
     try:
@@ -60,6 +70,7 @@ def drop_tables():
         logger.error(f"Error dropping tables: {str(e)}")
         db_session.rollback()
 
+
 def create_users():
     try:
         create_user(
@@ -68,7 +79,7 @@ def create_users():
                 email=getenv("ADMIN_EMAIL") or "",
                 full_name=getenv("ADMIN_FULL_NAME") or "",
                 disabled=False,
-                password=_get_password()
+                password=_get_password(),
             )
         )
         logger.info("Admin user created successfully!")
@@ -76,23 +87,34 @@ def create_users():
         logger.error(f"Error creating admin user: {str(e)}")
         db_session.rollback()
 
+
 def create_payment_methods():
     try:
-        db_session.execute(text("INSERT INTO payment_methods (payment_method_id, payment_method_name) VALUES ('1', 'Pix'), ('2', 'Crédito'), ('3', 'Débito'), ('4', 'Dinheiro')"))
+        db_session.execute(
+            text(
+                "INSERT INTO payment_methods (payment_method_id, payment_method_name) VALUES ('1', 'Pix'), ('2', 'Crédito'), ('3', 'Débito'), ('4', 'Dinheiro')"
+            )
+        )
         db_session.commit()
         logger.info("Payment methods created successfully!")
     except Exception as e:
         logger.error(f"Error creating payment methods: {str(e)}")
         db_session.rollback()
 
+
 def create_payment_categories():
     try:
-        db_session.execute(text("INSERT INTO payment_categories (payment_category_id, payment_category_name) VALUES ('1', 'Alimentação'), ('2', 'Saúde'), ('3', 'Salário'), ('4', 'Investimentos'), ('5', 'Pet'), ('6', 'Contas'), ('7', 'Educação'), ('8', 'Lazer'), ('0', 'Outros')"))
+        db_session.execute(
+            text(
+                "INSERT INTO payment_categories (payment_category_id, payment_category_name) VALUES ('1', 'Alimentação'), ('2', 'Saúde'), ('3', 'Salário'), ('4', 'Investimentos'), ('5', 'Pet'), ('6', 'Contas'), ('7', 'Educação'), ('8', 'Lazer'), ('0', 'Outros')"
+            )
+        )
         db_session.commit()
         logger.info("Payment categories created successfully!")
     except Exception as e:
         logger.error(f"Error creating payment categories: {str(e)}")
         db_session.rollback()
+
 
 # Calling functions
 args = sys.argv

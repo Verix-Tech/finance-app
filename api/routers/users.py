@@ -18,7 +18,7 @@ router = APIRouter(prefix="/users", tags=["Users"])
 async def create_user(
     request: CreateUserRequest,
     current_user: User = Depends(get_current_user),
-    db_service: DatabaseService = Depends(get_database_service)
+    db_service: DatabaseService = Depends(get_database_service),
 ):
     """Create or update a user."""
     try:
@@ -26,29 +26,26 @@ async def create_user(
             platform_id=request.platform_id,
             platform_name=request.platform_name,
             name=request.name,
-            phone=request.phone
+            phone=request.phone,
         )
-        
+
         return SuccessResponse(
             status=settings.RESPONSE_SUCCESS,
             data=result,
-            message=f"Client '{request.platform_id}' updated!"
+            message=f"Client '{request.platform_id}' updated!",
         )
-    
+
     except DataError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=settings.SYNTAX_ERROR
+            status_code=status.HTTP_400_BAD_REQUEST, detail=settings.SYNTAX_ERROR
         )
     except (ProgrammingError, StatementError) as e:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=settings.DATABASE_ERROR
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=settings.DATABASE_ERROR
         )
     except SubscriptionError as e:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=settings.NO_SUBSCRIPTION
+            status_code=status.HTTP_403_FORBIDDEN, detail=settings.NO_SUBSCRIPTION
         )
 
 
@@ -56,41 +53,36 @@ async def create_user(
 async def client_exists(
     request: ClientExistsRequest,
     current_user: User = Depends(get_current_user),
-    db_service: DatabaseService = Depends(get_database_service)
+    db_service: DatabaseService = Depends(get_database_service),
 ):
     """Check if a client exists."""
     try:
         exists = db_service.check_client_exists(request.platform_id)
-        
+
         if exists:
             return SuccessResponse(
                 status=settings.RESPONSE_SUCCESS,
                 data={"platform_id": request.platform_id},
-                message=f"Client '{request.platform_id}' exists!"
+                message=f"Client '{request.platform_id}' exists!",
             )
         else:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=settings.CLIENT_NOT_EXISTS
+                status_code=status.HTTP_404_NOT_FOUND, detail=settings.CLIENT_NOT_EXISTS
             )
-    
+
     except ClientNotExistsError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=settings.CLIENT_NOT_EXISTS
+            status_code=status.HTTP_404_NOT_FOUND, detail=settings.CLIENT_NOT_EXISTS
         )
     except DataError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=settings.SYNTAX_ERROR
+            status_code=status.HTTP_400_BAD_REQUEST, detail=settings.SYNTAX_ERROR
         )
     except (ProgrammingError, StatementError) as e:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=settings.DATABASE_ERROR
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=settings.DATABASE_ERROR
         )
     except SubscriptionError as e:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=settings.NO_SUBSCRIPTION
-        ) 
+            status_code=status.HTTP_403_FORBIDDEN, detail=settings.NO_SUBSCRIPTION
+        )

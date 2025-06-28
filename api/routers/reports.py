@@ -16,14 +16,14 @@ router = APIRouter(prefix="/reports", tags=["Reports"])
 async def generate_report(
     request: GenerateReportRequest,
     current_user: User = Depends(get_current_user),
-    db_service: DatabaseService = Depends(get_database_service)
+    db_service: DatabaseService = Depends(get_database_service),
 ):
     """Generate extract for a client."""
     try:
         # Get client_id from database service
         inserter = db_service.get_inserter(request.platform_id)
         client_id = inserter.client_id_uuid
-        
+
         # Generate report using Celery service
         result_stream = CeleryService.generate_report(
             client_id=client_id,
@@ -31,25 +31,22 @@ async def generate_report(
             end_date=request.end_date,
             days_before=request.days_before,
             aggr=request.aggr,
-            filter=request.filter
+            filter=request.filter,
         )
-        
+
         # Return streaming response
         return StreamingResponse(
             iter([result_stream.getvalue()]),
-            headers={
-                "Content-Disposition": f"attachment; filename=extract.json"
-            },
-            media_type="application/json"
+            headers={"Content-Disposition": f"attachment; filename=extract.json"},
+            media_type="application/json",
         )
-        
+
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=settings.SYNTAX_ERROR
+            status_code=status.HTTP_400_BAD_REQUEST, detail=settings.SYNTAX_ERROR
         )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        ) 
+            detail="Internal server error",
+        )

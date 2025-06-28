@@ -26,4 +26,4 @@ class LimitCheckResponse(BaseModel):
     limit_value: float = Field(..., description="Limit value")
     current_spent: float = Field(..., description="Current amount spent")
     remaining: float = Field(..., description="Remaining amount")
-    is_exceeded: bool = Field(..., description="Whether limit is exceeded") 
+    is_exceeded: bool = Field(..., description="Whether limit is exceeded")

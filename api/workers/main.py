@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+
 sys.path.append(str(Path(__file__).parent.parent))
 
 import pandas as pd
@@ -21,33 +22,31 @@ def configure_logging():
     """Configure application logging."""
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler("logs/workers.log"),
-            logging.StreamHandler()
-        ]
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.FileHandler("logs/workers.log"), logging.StreamHandler()],
     )
     # Reduce noise from libraries
     logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
     logging.getLogger("psycopg2").setLevel(logging.ERROR)
 
+
 configure_logging()
 logger = logging.getLogger(__name__)
 
 # Get Redis configuration with fallback
-redis_server = getenv('REDIS_SERVER', 'redis://localhost:6379')
+redis_server = getenv("REDIS_SERVER", "redis://localhost:6379")
 logger.info(f"Configuring Celery with Redis broker: {redis_server}")
 
 try:
-    app = Celery('tasks', broker=redis_server, backend=redis_server)
+    app = Celery("tasks", broker=redis_server, backend=redis_server)
     logger.info("Celery app configured successfully")
-    
+
     # Configure Celery settings for Docker environment
     app.conf.update(
-        task_serializer='json',
-        accept_content=['json'],
-        result_serializer='json',
-        timezone='UTC',
+        task_serializer="json",
+        accept_content=["json"],
+        result_serializer="json",
+        timezone="UTC",
         enable_utc=True,
         task_track_started=True,
         task_time_limit=30 * 60,  # 30 minutes
@@ -62,35 +61,48 @@ except Exception as e:
 
 db_manager = DatabaseManager()
 
+
 class AppConfig:
     """Handles application configuration and constants."""
-    
-    # Response messages    
+
+    # Response messages
     DATABASE_ERROR = "erro ao inserir dados, verifique a consulta"
     SYNTAX_ERROR = "erro de sintaxe, verifique os valores"
     VALIDATION_ERROR = {
         "start_date_or_days_before_required": "start_date or days_before must be provided",
         "invalid_aggr_mode": "Invalid aggr mode",
         "Exception": "Unexpected error in generate_extract",
-        "ValueError": "Validation error in generate_extract"
+        "ValueError": "Validation error in generate_extract",
     }
 
 
 @app.task(bind=True)
 def generate_extract(
-        self,
-        client_id: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        days_before: Optional[str] = None,
-        filter: Optional[dict] = None,
-        aggr: Optional[dict] = None
-    ) -> str:
+    self,
+    client_id: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    days_before: Optional[str] = None,
+    filter: Optional[dict] = None,
+    aggr: Optional[dict] = None,
+) -> str:
     """Generate extract for a client with proper error handling."""
     try:
         logger.info(f"Starting extract generation for client_id: {client_id}")
-        
-        columns = ['client_id', 'transaction_id', 'transaction_timestamp', 'transaction_revenue', 'payment_description', 'payment_category_id', 'transaction_type'] if aggr else ['client_id', 'transaction_timestamp', 'transaction_revenue']
+
+        columns = (
+            [
+                "client_id",
+                "transaction_id",
+                "transaction_timestamp",
+                "transaction_revenue",
+                "payment_description",
+                "payment_category_id",
+                "transaction_type",
+            ]
+            if aggr
+            else ["client_id", "transaction_timestamp", "transaction_revenue"]
+        )
 
         if not start_date and not days_before:
             error_msg = AppConfig.VALIDATION_ERROR["start_date_or_days_before_required"]
@@ -111,49 +123,61 @@ def generate_extract(
                     AND date(transaction_timestamp) BETWEEN '{start_date}' AND '{end_date}'
                     AND {where_string}
                 """
-        
+
         with db_manager.get_session() as session:
             dados = session.execute(text(query)).all()
             df = pd.DataFrame(dados, columns=columns)
 
-            df['transaction_timestamp'] = pd.to_datetime(df['transaction_timestamp'])
-
+            df["transaction_timestamp"] = pd.to_datetime(df["transaction_timestamp"])
 
             if aggr and aggr["activated"] == True:
                 if aggr["mode"] is not None:
                     df = make_aggr_logic(aggr["mode"], df)
                 else:
-                    self.update_state(state=states.FAILURE, meta={
-                        'exc_type': str(ValueError),
-                        'exc_message': AppConfig.VALIDATION_ERROR["invalid_aggr_mode"]
-                    })
+                    self.update_state(
+                        state=states.FAILURE,
+                        meta={
+                            "exc_type": str(ValueError),
+                            "exc_message": AppConfig.VALIDATION_ERROR[
+                                "invalid_aggr_mode"
+                            ],
+                        },
+                    )
                     raise ValueError(AppConfig.VALIDATION_ERROR["invalid_aggr_mode"])
-            else: pass
-            
-            df["transaction_timestamp"] = df["transaction_timestamp"].dt.strftime('%Y-%m-%d')
+            else:
+                pass
+
+            df["transaction_timestamp"] = df["transaction_timestamp"].dt.strftime(
+                "%Y-%m-%d"
+            )
             result = df.to_csv(index=True)
-            logger.info(f"Extract generation completed successfully for client_id: {client_id}")
+            logger.info(
+                f"Extract generation completed successfully for client_id: {client_id}"
+            )
             return result
-            
+
     except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
-        error_msg = AppConfig.VALIDATION_ERROR[type(e).__name__] if type(e).__name__ in AppConfig.VALIDATION_ERROR else AppConfig.DATABASE_ERROR
+        error_msg = (
+            AppConfig.VALIDATION_ERROR[type(e).__name__]
+            if type(e).__name__ in AppConfig.VALIDATION_ERROR
+            else AppConfig.DATABASE_ERROR
+        )
         logger.error(error_msg)
-        self.update_state(state=states.FAILURE, meta={
-            'exc_type': type(e).__name__,
-            'exc_message': str(e)
-        })
+        self.update_state(
+            state=states.FAILURE,
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)},
+        )
         raise Ignore()
-    
+
+
 @app.task(bind=True)
-def limit_check(
-        self,
-        client_id: str,
-        category_id: str
-    ) -> dict:
+def limit_check(self, client_id: str, category_id: str) -> dict:
     """Check if the limit is exceeded."""
     try:
-        logger.info(f"Starting limit check for client_id: {client_id}, category_id: {category_id}")
-        
+        logger.info(
+            f"Starting limit check for client_id: {client_id}, category_id: {category_id}"
+        )
+
         query = f"""
             SELECT 
                 SUM(transaction_revenue) as total_revenue
@@ -167,21 +191,32 @@ def limit_check(
         with db_manager.get_session() as session:
             dados = session.execute(text(query)).all()
             df = pd.DataFrame(dados)
-            total_revenue = df['total_revenue'].values[0]
+            total_revenue = df["total_revenue"].values[0]
 
             limit_value = get_limits(client_id=client_id, category_id=category_id)
             limit_exceeded = True if total_revenue >= limit_value else False
 
-            return {"status": "success", "message": "Limit check completed", "total_revenue": total_revenue, "limit_value": limit_value, "limit_exceeded": limit_exceeded}
+            return {
+                "status": "success",
+                "message": "Limit check completed",
+                "total_revenue": total_revenue,
+                "limit_value": limit_value,
+                "limit_exceeded": limit_exceeded,
+            }
     except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
-        error_msg = AppConfig.VALIDATION_ERROR[type(e).__name__] if type(e).__name__ in AppConfig.VALIDATION_ERROR else AppConfig.DATABASE_ERROR
+        error_msg = (
+            AppConfig.VALIDATION_ERROR[type(e).__name__]
+            if type(e).__name__ in AppConfig.VALIDATION_ERROR
+            else AppConfig.DATABASE_ERROR
+        )
         logger.error(error_msg)
-        self.update_state(state=states.FAILURE, meta={
-            'exc_type': type(e).__name__,
-            'exc_message': str(e)
-        })
+        self.update_state(
+            state=states.FAILURE,
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)},
+        )
         raise Ignore()
-    
+
+
 # def limit_check_debug(
 #         client_id: str,
 #         category_id: str
@@ -189,13 +224,13 @@ def limit_check(
 #     """Check if the limit is exceeded."""
 #     try:
 #         logger.info(f"Starting limit check for client_id: {client_id}, category_id: {category_id}")
-        
+
 #         query = f"""
-#             SELECT 
+#             SELECT
 #                 SUM(transaction_revenue) as total_revenue
-#             FROM transactions 
-#             WHERE 
-#                 client_id = '{client_id}' 
+#             FROM transactions
+#             WHERE
+#                 client_id = '{client_id}'
 #                 AND payment_category_id = '{category_id}'
 #                 AND date_trunc('month', transaction_timestamp) = date_trunc('month', CURRENT_DATE)
 #         """
@@ -220,11 +255,11 @@ def limit_check(
 #     """Get limits for a client."""
 #     try:
 #         logger.info(f"Starting limits retrieval for client_id: {client_id}")
-        
+
 #         query = f"""
 #             SELECT * FROM limits WHERE client_id = '{client_id}' AND limit_category = '{limit_category}'
 #         """
-        
+
 #         with db_manager.get_session() as session:
 #             dados = session.execute(text(query)).all()
 #             df = pd.DataFrame(dados)
@@ -234,7 +269,7 @@ def limit_check(
 #         error_msg = AppConfig.VALIDATION_ERROR[type(e).__name__] if type(e).__name__ in AppConfig.VALIDATION_ERROR else AppConfig.DATABASE_ERROR
 #         logger.error(error_msg)
 #         raise Ignore()
-    
+
 # print(get_limits_debug(client_id='4dfd378d-5782-44e4-8872-35778552abed', limit_category='Alimentação'))
 
 # def generate_extrato(
@@ -246,7 +281,7 @@ def limit_check(
 #     ):
 #     # try:
 #     logger.info(f"Starting extract generation for client_id: {client_id}")
-    
+
 #     columns = ['client_id', 'transaction_timestamp', 'transaction_revenue', 'payment_location', 'payment_method_name', 'payment_product'] if detailed else ['client_id', 'transaction_timestamp', 'transaction_revenue']
 
 #     if not start_date and not days_before:
@@ -260,14 +295,14 @@ def limit_check(
 #         end_date = start_date
 
 #     query = f"""
-#             SELECT 
+#             SELECT
 #                 {', '.join(columns)}
 #             FROM transactions
 #             -- WHERE
 #                 -- client_id = '{client_id}'
 #                 -- AND date(transaction_timestamp) BETWEEN '{start_date}' AND '{end_date}'
 #             """
-    
+
 #     with db_manager.get_session() as session:
 #         dados = session.execute(text(query)).all()
 #         df = pd.DataFrame(dados, columns=columns)
@@ -292,39 +327,39 @@ def limit_check(
 #                 #     'exc_message': error_msg
 #                 # })
 #                 # raise ValueError(error_msg)
-                
+
 #         if not detailed or detailed["activated"] == False:
 #             extrato = df.groupby(['transaction_timestamp'])['transaction_revenue'].sum()
 #         else:
 #             extrato = df
-            
+
 #         result = extrato.to_csv('data/data.csv', index=True)
 #         logger.info(f"Extract generation completed successfully for client_id: {client_id}")
 #         return {"status": "success", "message": "Extract generated successfully", "data": result}
-            
-    # except ValueError as e:
-    #     error_msg = f"Validation error in generate_extract: {str(e)}"
-    #     logger.error(error_msg)
-    #     self.update_state(state=states.FAILURE, meta={
-    #         'exc_type': type(e).__name__,
-    #         'exc_message': str(e)
-    #     })
-    #     raise Ignore()
-    # except (DataError, ProgrammingError, StatementError) as e:
-    #     error_msg = f"Database error in generate_extract: {str(e)}"
-    #     logger.error(error_msg)
-    #     self.update_state(state=states.FAILURE, meta={
-    #         'exc_type': type(e).__name__,
-    #         'exc_message': str(e)
-    #     })
-    #     raise Ignore()
-    # except Exception as e:
-    #     error_msg = AppConfig.VALIDATION_ERROR["unexpected_error"]
-    #     logger.error(error_msg)
-    #     self.update_state(state=states.FAILURE, meta={
-    #         'exc_type': type(e).__name__,
-    #         'exc_message': str(e)
-    #     })
-    #     raise Ignore()
-        
+
+# except ValueError as e:
+#     error_msg = f"Validation error in generate_extract: {str(e)}"
+#     logger.error(error_msg)
+#     self.update_state(state=states.FAILURE, meta={
+#         'exc_type': type(e).__name__,
+#         'exc_message': str(e)
+#     })
+#     raise Ignore()
+# except (DataError, ProgrammingError, StatementError) as e:
+#     error_msg = f"Database error in generate_extract: {str(e)}"
+#     logger.error(error_msg)
+#     self.update_state(state=states.FAILURE, meta={
+#         'exc_type': type(e).__name__,
+#         'exc_message': str(e)
+#     })
+#     raise Ignore()
+# except Exception as e:
+#     error_msg = AppConfig.VALIDATION_ERROR["unexpected_error"]
+#     logger.error(error_msg)
+#     self.update_state(state=states.FAILURE, meta={
+#         'exc_type': type(e).__name__,
+#         'exc_message': str(e)
+#     })
+#     raise Ignore()
+
 # print(generate_extrato(client_id='e1b043b5-0d52-4883-8fe9-1de12f755b2d', start_date='2025-04-01', end_date='2025-04-30', detailed={"mode": "day", "activated": False}))

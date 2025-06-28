@@ -14,7 +14,9 @@ class CreateTransactionRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
     transaction_revenue: float = Field(..., description="Transaction amount")
     transaction_type: str = Field(..., description="Transaction type")
-    transaction_timestamp: Optional[str] = Field(None, description="Transaction timestamp")
+    transaction_timestamp: Optional[str] = Field(
+        None, description="Transaction timestamp"
+    )
     payment_method_id: Optional[str] = Field(None, description="Payment method ID")
     payment_description: Optional[str] = Field(None, description="Payment description")
     payment_category_id: Optional[str] = Field(None, description="Payment category ID")
@@ -25,7 +27,9 @@ class UpdateTransactionRequest(BaseModel):
     transactionId: int = Field(..., description="Transaction ID to update")
     transaction_revenue: Optional[float] = Field(None, description="Transaction amount")
     transaction_type: Optional[str] = Field(None, description="Transaction type")
-    transaction_timestamp: Optional[str] = Field(None, description="Transaction timestamp")
+    transaction_timestamp: Optional[str] = Field(
+        None, description="Transaction timestamp"
+    )
     payment_method_id: Optional[str] = Field(None, description="Payment method ID")
     payment_description: Optional[str] = Field(None, description="Payment description")
     payment_category_id: Optional[str] = Field(None, description="Payment category ID")
@@ -33,10 +37,18 @@ class UpdateTransactionRequest(BaseModel):
 
 class DeleteTransactionRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
-    transaction_id: Optional[Union[int, List[int]]] = Field(None, description="Transaction ID to delete")
-    transaction_timestamp: Optional[str] = Field(None, description="Transaction timestamp filter")
-    payment_method_id: Optional[str] = Field(None, description="Payment method ID filter")
-    payment_category_id: Optional[str] = Field(None, description="Payment category ID filter")
+    transaction_id: Optional[Union[int, List[int]]] = Field(
+        None, description="Transaction ID to delete"
+    )
+    transaction_timestamp: Optional[str] = Field(
+        None, description="Transaction timestamp filter"
+    )
+    payment_method_id: Optional[str] = Field(
+        None, description="Payment method ID filter"
+    )
+    payment_category_id: Optional[str] = Field(
+        None, description="Payment category ID filter"
+    )
 
 
 class CreateLimitRequest(BaseModel):
@@ -69,4 +81,4 @@ class GenerateReportRequest(BaseModel):
 
 
 class ClientExistsRequest(BaseModel):
-    platform_id: str = Field(..., description="Platform identifier") 
+    platform_id: str = Field(..., description="Platform identifier")
