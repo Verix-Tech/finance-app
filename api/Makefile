@@ -1,6 +1,9 @@
 -include .env
 export
 
+format_python_files:
+	python format/format_python_files.py
+
 # Create tables on database
 create_tables:
 	python database_manager/manage_tables.py create_tables

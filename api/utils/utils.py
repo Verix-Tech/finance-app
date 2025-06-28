@@ -73,7 +73,7 @@ def get_limits(client_id: str, category_id: str) -> float:
         # If no data is returned, return 0.0 (no limit)
         if not dados:
             logger.info(f"No limit found for client_id: {client_id}, category: {category_id}")
-            return 0.0
+            return 0
         
         df = pd.DataFrame(dados)
         

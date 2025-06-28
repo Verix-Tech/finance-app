@@ -155,16 +155,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         db_response.json()["data"]["transaction_id"],
                         message_id
                     ))
+                
+                limit_response = SQLDBConfig().send_request(
+                    endpoint="/limit-check",
+                    endpoint_var="",
+                    method="post",
+                    params={"category_id": response["params"]["payment_category_id"]},
+                    platform_id=str(user_id)
+                )
+            
+                if limit_response.status_code == 201:
+                    if limit_response.json()["data"]["limit_exceeded"] == True:
+                        await update.message.reply_text(message_id + f"\nVocê atingiu o seu limite de gastos de '{BotConfig().CATEGORIAS[response['params']['payment_category_id']]}' deste mês. 🚫")
+                    elif limit_response.json()["data"]["total_revenue"] >= utils.get_limit_percentage(limit_response.json()["data"]["limit_value"]) and \
+                        limit_response.json()["data"]["total_revenue"] < limit_response.json()["data"]["limit_value"]:
+                        await update.message.reply_text(message_id + f"\nVocê atingiu 90% do seu limite de gastos de '{BotConfig().CATEGORIAS[response['params']['payment_category_id']]}' deste mês. 🚫")
+                
         elif _type == "generate-report":
             status_code = 0
             while status_code != 200:
-                db_response = SQLDBConfig().send_request(
-                    endpoint="/task-status",
-                    endpoint_var=f"{db_response.json()['data']['task_id']}",
-                    method="get",
-                    params={},
-                    platform_id=str(user_id)
-                )
                 status_code = db_response.status_code
 
                 if status_code == 200:
@@ -191,7 +200,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
         elif _type == "delete-transaction":
             if db_response.status_code == 201:
-                await update.message.reply_text(message_id + "\nTransação deletada com sucesso!")
+                await update.message.reply_text(message_id + "\nTransação(ões) deletada(s) com sucesso!")
+            else:
+                await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+        elif _type == "create-limit":
+            if db_response.status_code == 201:
+                await update.message.reply_text(message_id + "\nLimite criado com sucesso!")
             else:
                 await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
         else:
@@ -209,27 +223,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # get_csv = requests.get("http://localhost:8000/task-status/314daa7f-2a3b-4f5d-8a85-5c86e08a51b4", headers={"Authorization": f"Bearer {SQLDBConfig().authenticate()}"})
-    # print(get_csv.content.decode("utf-8"))
-    # params = {'start_date': '01/06', 'end_date': '30/06', 'aggr': {'mode': 'day', 'activated': True}}
-    # params["start_date"] = utils.format_date_with_year(params["start_date"])
-    # params["end_date"] = utils.format_date_with_year(params["end_date"])
-    # r = SQLDBConfig().send_request(
-    #     endpoint="/generate-report",
-    #     endpoint_var="",
-    #     method="post",
-    #     params=params,
-    #     platform_id="2140476700"
-    # )
-    # print(r.content.decode("utf-8"))
-    # print(r.request.body)
-
-    # time.sleep(2)
-    # r_1 = SQLDBConfig().send_request(
-    #     endpoint="/task-status",
-    #     endpoint_var=f"{r.json()['data']['task_id']}",
-    #     method="get",
-    #     params={},
-    #     platform_id="2140476700"
-    # )
-    # print(r_1.content.decode("utf-8"))

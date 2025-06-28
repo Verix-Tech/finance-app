@@ -20,3 +20,5 @@ bot/utils/*.csv
 bot/utils/*.png
 bot/utils/*.ipynb
 bot/*.json
+api/migrate_to_refactored.py
+api/backup_original/*

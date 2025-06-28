@@ -124,19 +124,36 @@ class DataInserter:
         Execute a parameterized DELETE query.
         
         Args:
-            table: The table to insert into
-            values: Dictionary of column-value pairs to insert
+            table: The table to delete from
+            values: Dictionary of column-value pairs to match for deletion
+                   Values can be single values or lists of values
         """
         if "platform_id" in values.keys():
             values["client_id"] = self.client_id_uuid
             values.pop("platform_id")
-        where_condition = "AND ".join(f"{k} = :{k} " for k in values.keys())
+        
+        where_conditions = []
+        query_params = {}
+        
+        for column, value in values.items():
+            if isinstance(value, list):
+                # Handle list of values with unique parameter names
+                param_names = [f"{column}_{i}" for i in range(len(value))]
+                where_conditions.append(f"{column} IN ({', '.join(f':{param}' for param in param_names)})")
+                for param_name, val in zip(param_names, value):
+                    query_params[param_name] = val
+            else:
+                # Handle single value
+                where_conditions.append(f"{column} = :{column}")
+                query_params[column] = value
+
+        where_clause = " AND ".join(where_conditions)
 
         query = text(
             f"DELETE FROM {table} "
-            f"WHERE {where_condition}"
+            f"WHERE {where_clause}"
         )
-        self.session.execute(query, values)
+        self.session.execute(query, query_params)
         self.session.commit()
     
     def _client_exists(self) -> bool:

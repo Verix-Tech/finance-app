@@ -390,3 +390,7 @@ def create_table_image(df: pd.DataFrame, figsize: tuple = (12, 8),
     buffer.close()
     
     return image_bytes
+
+def get_limit_percentage(limit_value: float) -> float:
+    limit_90 = limit_value - ((90 / limit_value) * 100)
+    return limit_90

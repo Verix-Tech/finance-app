@@ -1,14 +1,14 @@
 {7}
-Consegui inserir sua transação!
+Consegui inserir sua transação! ✅
 
 Irei resumir pra você o que foi armazenado.
 
-Tipo: {0}
-Valor: R$ {1}
-Descrição: {2}
-Categoria: {3}
-Método de pagamento: {4}
-Data: {5}
-ID: {6}
+💰 Tipo: {0}
+💵 Valor: R$ {1}
+🏊 Descrição: {2}
+🎮 Categoria: {3}
+❓ Método de pagamento: {4}
+📅 Data: {5}
+🆔 ID: {6}
 
-Se algo não foi armazenado como esperado ou você desejar alterar alguma informação, é só pedir!
+Se algo não foi armazenado como esperado ou você desejar alterar alguma informação, é só pedir! ☺️

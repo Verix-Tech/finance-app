@@ -13,7 +13,7 @@ from sqlalchemy.exc import DataError, ProgrammingError, StatementError
 
 from database_manager.connector import DatabaseManager
 from database_manager.models.models import Transaction
-from utils import get_start_end_date, make_where_string, make_aggr_logic
+from utils import get_start_end_date, make_where_string, make_aggr_logic, get_limits
 
 
 # Configure logging
@@ -143,7 +143,79 @@ def generate_extract(
             'exc_message': str(e)
         })
         raise Ignore()
+    
+@app.task(bind=True)
+def limit_check(
+        self,
+        client_id: str,
+        category_id: str
+    ) -> dict:
+    """Check if the limit is exceeded."""
+    try:
+        logger.info(f"Starting limit check for client_id: {client_id}, category_id: {category_id}")
+        
+        query = f"""
+            SELECT 
+                SUM(transaction_revenue) as total_revenue
+            FROM transactions 
+            WHERE 
+                client_id = '{client_id}' 
+                AND payment_category_id = '{category_id}'
+                AND date_trunc('month', transaction_timestamp) = date_trunc('month', CURRENT_DATE)
+        """
 
+        with db_manager.get_session() as session:
+            dados = session.execute(text(query)).all()
+            df = pd.DataFrame(dados)
+            total_revenue = df['total_revenue'].values[0]
+
+            limit_value = get_limits(client_id=client_id, category_id=category_id)
+            limit_exceeded = True if total_revenue >= limit_value else False
+
+            return {"status": "success", "message": "Limit check completed", "total_revenue": total_revenue, "limit_value": limit_value, "limit_exceeded": limit_exceeded}
+    except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
+        error_msg = AppConfig.VALIDATION_ERROR[type(e).__name__] if type(e).__name__ in AppConfig.VALIDATION_ERROR else AppConfig.DATABASE_ERROR
+        logger.error(error_msg)
+        self.update_state(state=states.FAILURE, meta={
+            'exc_type': type(e).__name__,
+            'exc_message': str(e)
+        })
+        raise Ignore()
+    
+# def limit_check_debug(
+#         client_id: str,
+#         category_id: str
+#     ):
+#     """Check if the limit is exceeded."""
+#     try:
+#         logger.info(f"Starting limit check for client_id: {client_id}, category_id: {category_id}")
+        
+#         query = f"""
+#             SELECT 
+#                 SUM(transaction_revenue) as total_revenue
+#             FROM transactions 
+#             WHERE 
+#                 client_id = '{client_id}' 
+#                 AND payment_category_id = '{category_id}'
+#                 AND date_trunc('month', transaction_timestamp) = date_trunc('month', CURRENT_DATE)
+#         """
+
+#         with db_manager.get_session() as session:
+#             dados = session.execute(text(query)).all()
+#             df = pd.DataFrame(dados)
+#             total_revenue = df['total_revenue'].values[0]
+
+#             limit_value = get_limits(client_id=client_id, category_id=category_id)
+
+#             if total_revenue >= limit_value:
+#                 return True
+#             else: return False
+#     except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
+#         error_msg = AppConfig.VALIDATION_ERROR[type(e).__name__] if type(e).__name__ in AppConfig.VALIDATION_ERROR else AppConfig.DATABASE_ERROR
+#         logger.error(error_msg)
+#         raise Ignore()
+
+# print(limit_check_debug(client_id='4dfd378d-5782-44e4-8872-35778552abed', category_id='1'))
 # def get_limits_debug(client_id: str, limit_category: str):
 #     """Get limits for a client."""
 #     try:
