@@ -97,12 +97,23 @@ def generate_extract(
                 "transaction_timestamp",
                 "transaction_revenue",
                 "payment_description",
-                "payment_category_id",
+                "payment_categories.payment_category_id",
+                "payment_categories.payment_category_name",
+                "payment_methods.payment_method_id",
+                "payment_methods.payment_method_name",
                 "transaction_type",
             ]
             if aggr
             else ["client_id", "transaction_timestamp", "transaction_revenue"]
         )
+
+        # Dicionário para renomear as colunas para nomes mais amigáveis
+        column_rename_map = {
+            "payment_categories.payment_category_id": "payment_category_id",
+            "payment_categories.payment_category_name": "payment_category_name",
+            "payment_methods.payment_method_id": "payment_method_id",
+            "payment_methods.payment_method_name": "payment_method_name"
+        }
 
         if not start_date and not days_before:
             error_msg = AppConfig.VALIDATION_ERROR["start_date_or_days_before_required"]
@@ -118,6 +129,8 @@ def generate_extract(
                 SELECT 
                     {', '.join(columns)}
                 FROM transactions
+                LEFT JOIN payment_categories ON transactions.payment_category_id = payment_categories.payment_category_id
+                LEFT JOIN payment_methods ON transactions.payment_method_id = payment_methods.payment_method_id
                 WHERE
                     client_id = '{client_id}'
                     AND date(transaction_timestamp) BETWEEN '{start_date}' AND '{end_date}'
@@ -127,6 +140,8 @@ def generate_extract(
         with db_manager.get_session() as session:
             dados = session.execute(text(query)).all()
             df = pd.DataFrame(dados, columns=columns)
+
+            df.rename(columns={col: column_rename_map.get(col, col) for col in df.columns}, inplace=True)
 
             df["transaction_timestamp"] = pd.to_datetime(df["transaction_timestamp"])
 
@@ -147,9 +162,8 @@ def generate_extract(
             else:
                 pass
 
-            df["transaction_timestamp"] = df["transaction_timestamp"].dt.strftime(
-                "%Y-%m-%d"
-            )
+            df["transaction_timestamp"] = df["transaction_timestamp"].dt.strftime("%Y-%m-%d")
+
             result = df.to_csv(index=True)
             logger.info(
                 f"Extract generation completed successfully for client_id: {client_id}"

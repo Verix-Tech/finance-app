@@ -12,6 +12,9 @@ from config.settings import settings
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+## TODO 
+# [ ] - Retornar o ID do cliente na API para autenticar no dashboard
+
 
 @router.post("/token", response_model=TokenResponse)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
