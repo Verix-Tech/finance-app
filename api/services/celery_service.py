@@ -1,7 +1,7 @@
 import io
 import logging
 from typing import Dict, Any, Optional
-from workers.main import generate_extract, limit_check
+from workers.main import generate_extract, limit_check, limit_check_all
 from utils.utils import get_limits
 from config.settings import settings
 
@@ -68,6 +68,32 @@ class CeleryService:
             # Execute the Celery task synchronously
             result = limit_check.apply(
                 kwargs={"client_id": client_id, "category_id": category_id}
+            ).get()  # This will wait for the task to complete
+
+            logger.info("Celery task completed successfully")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to execute Celery task: {e}")
+            raise e
+        
+    @staticmethod
+    def check_limit_all(client_id: str, filter: Optional[dict] = {}) -> Dict[str, Any]:
+        """Check if the limit is exceeded for all categories."""
+        try:
+            # Check if Redis server is configured
+            if not settings.REDIS_SERVER:
+                logger.error("REDIS_SERVER environment variable not set")
+                raise ValueError("Redis server not configured")
+            
+            logger.info(
+                f"Executing Celery task with Redis broker: {settings.REDIS_SERVER}"
+            )
+
+            # Execute the Celery task synchronously
+            result = limit_check_all.apply(
+                kwargs={"client_id": client_id, "filter": filter}
             ).get()  # This will wait for the task to complete
 
             logger.info("Celery task completed successfully")

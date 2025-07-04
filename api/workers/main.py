@@ -5,6 +5,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 import pandas as pd
 import logging
+from datetime import datetime, timedelta
 from os import getenv
 from typing import Optional
 from sqlalchemy import text
@@ -229,6 +230,63 @@ def limit_check(self, client_id: str, category_id: str) -> dict:
             meta={"exc_type": type(e).__name__, "exc_message": str(e)},
         )
         raise Ignore()
+    
+@app.task(bind=True)
+def limit_check_all(self, client_id: str, filter: Optional[dict] = {}) -> dict:
+    """Check if the limit is exceeded for all categories."""
+    try:
+        logger.info(f"Starting limit check for all categories for client_id: {client_id}")
+
+        start_date = filter.get("start_date", None) if filter else datetime.now().replace(day=1).strftime("%Y-%m-%d")
+        end_date = filter.get("end_date", None) if filter else ((datetime.now().replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        query = f"""
+                with aggr_transactions_by_category as (
+                    select
+                        sum(transaction_revenue) as total_revenue,  
+                        payment_category_id
+                    from transactions
+                    where
+                        client_id = '{client_id}'
+                        and transaction_type = 'Despesa'
+                        and date(transaction_timestamp) between '{start_date}' and '{end_date}'
+                    group by
+                        payment_category_id
+                )
+                select
+                    pc.payment_category_name,
+                    l.limit_value,
+                    t.total_revenue
+                from limits l
+                    left join aggr_transactions_by_category t
+                        on l.category_id = t.payment_category_id
+                    left join payment_categories pc
+                        on l.category_id = pc.payment_category_id
+        """
+
+        with db_manager.get_session() as session:
+            dados = session.execute(text(query)).all()
+            df = pd.DataFrame(dados)
+
+            return {
+                "status": "success",
+                "message": "Limit check completed",
+                "data": df.to_dict(orient="records"),
+            }
+    except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
+        error_msg = (
+            AppConfig.VALIDATION_ERROR[type(e).__name__]
+            if type(e).__name__ in AppConfig.VALIDATION_ERROR
+            else AppConfig.DATABASE_ERROR
+        )
+        logger.error(error_msg)
+        self.update_state(
+            state=states.FAILURE,
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)},
+        )
+        raise Ignore()
+        
+        
 
 
 # def limit_check_debug(

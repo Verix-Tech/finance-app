@@ -61,6 +61,9 @@ class LimitCheckRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
     category_id: str = Field(..., description="Category ID")
 
+class LimitCheckAllRequest(BaseModel):
+    platform_id: str = Field(..., description="Platform identifier")
+    filter: Optional[dict] = Field(None, description="Filter criteria")
 
 class GrantSubscriptionRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
