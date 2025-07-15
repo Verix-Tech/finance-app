@@ -214,3 +214,21 @@ class DatabaseService:
         except SubscriptionError as e:
             logger.error(f"Subscription error: {e}")
             raise e
+        
+    def create_card(self, platform_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new card."""
+        try:
+            inserter = self.get_inserter(platform_id)
+            inserter.insert_card(data=data)
+
+            logger.info(f"Card created successfully for platform_id: {platform_id}")
+            return {"platform_id": platform_id, **data}
+        except ClientNotExistsError as e:
+            logger.error(f"Client not exists error: {e}")
+            raise e
+        except (DataError, ProgrammingError, StatementError) as e:
+            logger.error(f"Database error revoking subscription: {e}")
+            raise e
+        except SubscriptionError as e:
+            logger.error(f"Subscription error: {e}")
+            raise e

@@ -34,8 +34,11 @@ class Transaction(Base):
     transaction_type = Column(String, nullable=False)
     transaction_revenue = Column(Float)
     payment_method_id = Column(String)
+    card_id = Column(Integer)
     payment_description = Column(String)
     payment_category_id = Column(String)
+    installment_payment = Column(Boolean)
+    installment_number = Column(Integer)
     transaction_timestamp = Column(DateTime(timezone=True), nullable=False)
 
 
@@ -89,3 +92,13 @@ class Client(Base):
     subscribed = Column(Boolean)
     subs_start_timestamp = Column(DateTime(timezone=True))
     subs_end_timestamp = Column(DateTime(timezone=True))
+
+class Card(Base):
+    __tablename__ = "cards"
+    __table_args__ = {"schema": "public"}
+
+    internal_card_id = Column(String, primary_key=True)
+    card_id = Column(Integer, nullable=False)
+    client_id = Column(String, nullable=False)
+    card_name = Column(String)
+    payment_date = Column(Integer, nullable=False)

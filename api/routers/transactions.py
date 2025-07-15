@@ -37,9 +37,12 @@ async def create_transaction(
             transaction_revenue=request.transaction_revenue,
             transaction_timestamp=request.transaction_timestamp,
             payment_method_id=request.payment_method_id,
+            card_id=request.card_id,
             payment_description=request.payment_description,
             payment_category_id=request.payment_category_id,
             transaction_type=request.transaction_type,
+            installment_payment=request.installment_payment,
+            installment_number=request.installment_number,
         )
 
         # Get limit value if category is provided
@@ -113,6 +116,10 @@ async def update_transaction(
     except SubscriptionError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail=settings.NO_SUBSCRIPTION
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
         )
 
 

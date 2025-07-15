@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, List
 from pydantic import BaseModel, Field
 
 
@@ -27,3 +27,7 @@ class LimitCheckResponse(BaseModel):
     current_spent: float = Field(..., description="Current amount spent")
     remaining: float = Field(..., description="Remaining amount")
     is_exceeded: bool = Field(..., description="Whether limit is exceeded")
+
+
+class ListAllCardsResponse(BaseModel):
+    cards: List[Dict[str, Any]] = Field(..., description="List of cards")

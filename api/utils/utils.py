@@ -96,3 +96,49 @@ def get_limits(client_id: str, category_id: str) -> float:
         df = pd.DataFrame(dados)
 
         return df["limit_value"].values[0]
+
+
+def validate_and_format_date(date_str: str) -> str:
+    """
+    Validate and standardize a date string.
+
+    Supported input formats:
+        1. "%Y-%m-%d"  (ISO / database default)
+        2. "%d/%m/%Y"  (common BR format)
+
+    If the input comes in the second format it will be converted to the
+    canonical "%Y-%m-%d" format used by the API/database layer.
+
+    Args:
+        date_str: Date string received in the request body/query-params.
+
+    Returns:
+        A string with the date represented as "%Y-%m-%d".
+
+    Raises:
+        ValueError: When the supplied string is not a valid date or does not
+                     match any of the supported formats.
+    """
+    if not isinstance(date_str, str):
+        raise ValueError("`date_str` must be a string in 'YYYY-MM-DD' or 'DD/MM/YYYY' format.")
+
+    logger.debug("Validating incoming date: %s", date_str)
+
+    # 1. Try ISO format first – already in the desired layout
+    try:
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        logger.debug("Date is already in ISO format.")
+        return date_obj.strftime("%Y-%m-%d")
+    except ValueError:
+        pass  # not ISO – try BR format next
+
+    # 2. Try Brazilian format (DD/MM/YYYY) and convert
+    try:
+        date_obj = datetime.strptime(date_str, "%d/%m/%Y")
+        logger.debug("Date converted from BR format to ISO.")
+        return date_obj.strftime("%Y-%m-%d")
+    except ValueError:
+        logger.error("Invalid date format received: %s", date_str)
+        raise ValueError(
+            "Invalid date format. Expected 'YYYY-MM-DD' or 'DD/MM/YYYY'."
+        ) from None

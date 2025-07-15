@@ -1,7 +1,7 @@
 import io
 import logging
 from typing import Dict, Any, Optional
-from workers.main import generate_extract, limit_check, limit_check_all
+from workers.main import generate_extract, limit_check, limit_check_all, get_user_info, list_all_cards
 from utils.utils import get_limits
 from config.settings import settings
 
@@ -16,7 +16,7 @@ class CeleryService:
         client_id: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        days_before: Optional[int] = None,
+        days_before: Optional[str] = None,
         aggr: Optional[str] = None,
         filter: Optional[str] = None,
     ) -> io.StringIO:
@@ -111,4 +111,36 @@ class CeleryService:
             return get_limits(client_id=client_id, category_id=category_id)
         except Exception as e:
             logger.error(f"Failed to get limit value: {e}")
+            raise e
+
+    @staticmethod
+    def get_user_info(client_id: str) -> Dict[str, Any]:
+        """Get user info."""
+        try:
+            result = get_user_info.apply(
+                kwargs={"client_id": client_id}
+            ).get()
+
+            logger.info("Celery task completed successfully")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to get user info: {e}")
+            raise e
+        
+    @staticmethod
+    def list_all_cards(client_id: str, date: str) -> Dict[str, Any]:
+        """List all cards for a client."""
+        try:
+            result = list_all_cards.apply(
+                kwargs={"client_id": client_id, "date": date}
+            ).get()
+            
+            logger.info("Celery task completed successfully")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to list all cards: {e}")
             raise e

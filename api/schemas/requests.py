@@ -18,9 +18,11 @@ class CreateTransactionRequest(BaseModel):
         None, description="Transaction timestamp"
     )
     payment_method_id: Optional[str] = Field(None, description="Payment method ID")
+    card_id: Optional[int] = Field(None, description="Card ID")
     payment_description: Optional[str] = Field(None, description="Payment description")
     payment_category_id: Optional[str] = Field(None, description="Payment category ID")
-
+    installment_payment: Optional[bool] = Field(None, description="Installment payment")
+    installment_number: Optional[int] = Field(None, description="Installment number")
 
 class UpdateTransactionRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
@@ -31,6 +33,7 @@ class UpdateTransactionRequest(BaseModel):
         None, description="Transaction timestamp"
     )
     payment_method_id: Optional[str] = Field(None, description="Payment method ID")
+    card_id: Optional[int] = Field(None, description="Card ID")
     payment_description: Optional[str] = Field(None, description="Payment description")
     payment_category_id: Optional[str] = Field(None, description="Payment category ID")
 
@@ -48,6 +51,9 @@ class DeleteTransactionRequest(BaseModel):
     )
     payment_category_id: Optional[str] = Field(
         None, description="Payment category ID filter"
+    )
+    card_id: Optional[int] = Field(
+        None, description="Card ID filter"
     )
 
 
@@ -69,19 +75,34 @@ class GrantSubscriptionRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
     subscriptionMonths: int = Field(..., description="Number of subscription months")
 
-
 class RevokeSubscriptionRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
-
 
 class GenerateReportRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
     start_date: Optional[str] = Field(None, description="Start date for report")
     end_date: Optional[str] = Field(None, description="End date for report")
-    days_before: Optional[int] = Field(None, description="Days before current date")
+    days_before: Optional[str] = Field(None, description="Days before current date")
     aggr: Optional[dict] = Field(None, description="Aggregation type")
     filter: Optional[dict] = Field(None, description="Filter criteria")
 
-
 class ClientExistsRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
+
+class GetUserInfoRequest(BaseModel):
+    platform_id: str = Field(..., description="Platform identifier")
+
+class RegisterUserRequest(BaseModel):
+    username: str = Field(..., description="Username")
+    password: str = Field(..., description="Password")
+    email: str = Field(..., description="Email")
+    full_name: str = Field(..., description="Full name")
+
+class CreateCardRequest(BaseModel):
+    platform_id: str = Field(..., description="Platform identifier")
+    card_name: str = Field(..., description="Card name")
+    payment_date: int = Field(..., description="Payment date")
+
+class ListAllCardsRequest(BaseModel):
+    platform_id: str = Field(..., description="Platform identifier")
+    date: str = Field(..., description="Date")

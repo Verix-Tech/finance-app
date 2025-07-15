@@ -4,14 +4,18 @@ from fastapi.responses import JSONResponse
 from auth.auth import User
 from dependencies.auth import get_current_user
 from dependencies.database import get_database_service
+from services.celery_service import CeleryService
 from services.database_service import DatabaseService
-from schemas.requests import CreateUserRequest, ClientExistsRequest
+from schemas.requests import CreateUserRequest, ClientExistsRequest, GetUserInfoRequest
 from schemas.responses import SuccessResponse, ErrorResponse
 from config.settings import settings
 from errors.errors import SubscriptionError, ClientNotExistsError
 from sqlalchemy.exc import DataError, ProgrammingError, StatementError
+import logging
 
 router = APIRouter(prefix="/users", tags=["Users"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.post("/create", response_model=SuccessResponse)
@@ -85,4 +89,33 @@ async def client_exists(
     except SubscriptionError as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail=settings.NO_SUBSCRIPTION
+        )
+
+
+@router.post("/get-user-info", response_model=SuccessResponse)
+async def get_user_info(
+    request: GetUserInfoRequest,
+    current_user: User = Depends(get_current_user),
+    db_service: DatabaseService = Depends(get_database_service),
+):
+    """Get user info."""
+    try:
+        inserter = db_service.get_inserter(request.platform_id)
+        client_id = inserter.client_id_uuid
+        
+        result = CeleryService.get_user_info(client_id=client_id)
+
+        if result["status"] == "success":
+            return SuccessResponse(
+                status=settings.RESPONSE_SUCCESS,
+                data=result["data"],
+                message=result["message"],
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result["message"]
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )

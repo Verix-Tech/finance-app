@@ -6,7 +6,10 @@ from auth.auth import (
     authenticate_user,
     create_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES,
+    create_user,
+    UserCreate,
 )
+from schemas.requests import RegisterUserRequest
 from schemas.responses import TokenResponse
 from config.settings import settings
 
@@ -31,3 +34,23 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/register")
+async def register_user(form_data: RegisterUserRequest):
+    """Register a new user."""
+    user = UserCreate(
+        username=form_data.username,
+        password=form_data.password,
+        email=form_data.email,
+        full_name=form_data.full_name,
+        disabled=False
+    )
+    create_user(user)
+    if not user.username:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing username")
+    if not user.password:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing password")
+    return {
+        "message": "User registered successfully",
+        "user": form_data
+    }

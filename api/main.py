@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings
 from dependencies.database import db_service
-from routers import auth, users, transactions, limits, subscriptions, reports, health
+from routers import auth, users, transactions, limits, subscriptions, reports, health, cards
 
 
 def configure_logging():
@@ -51,7 +51,8 @@ def create_app() -> FastAPI:
     app.include_router(subscriptions.router)
     app.include_router(reports.router)
     app.include_router(health.router)
-
+    app.include_router(cards.router)
+    
     # Startup event
     @app.on_event("startup")
     async def startup_event():

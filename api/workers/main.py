@@ -21,12 +21,32 @@ from utils import get_start_end_date, make_where_string, make_aggr_logic, get_li
 # Configure logging
 def configure_logging():
     """Configure application logging."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.FileHandler("logs/workers.log"), logging.StreamHandler()],
+    log_dir = Path(__file__).resolve().parent.parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "workers.log"
+
+    # Create file handler
+    file_handler = logging.FileHandler(log_file.as_posix())
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
-    # Reduce noise from libraries
+
+    # Attach the handler to the root logger if not already present
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    if not any(
+        isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", None) == str(log_file)
+        for h in root_logger.handlers
+    ):
+        root_logger.addHandler(file_handler)
+
+    # Also ensure a stream handler exists for console output
+    if not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
+        root_logger.addHandler(logging.StreamHandler())
+
+    # Reduce noise from verbose libraries
     logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
     logging.getLogger("psycopg2").setLevel(logging.ERROR)
 
@@ -75,6 +95,7 @@ class AppConfig:
         "Exception": "Unexpected error in generate_extract",
         "ValueError": "Validation error in generate_extract",
     }
+    EMPTY_DATA_ERROR = "sem dados no período"
 
 
 @app.task(bind=True)
@@ -137,6 +158,7 @@ def generate_extract(
                     AND date(transaction_timestamp) BETWEEN '{start_date}' AND '{end_date}'
                     AND {where_string}
                 """
+        logger.info(f"Executing query:\n{query}")
 
         with db_manager.get_session() as session:
             dados = session.execute(text(query)).all()
@@ -171,6 +193,17 @@ def generate_extract(
             )
             return result
 
+    except pd.errors.EmptyDataError as e:
+        error_msg = (
+            AppConfig.EMPTY_DATA_ERROR
+        )
+        logger.error(error_msg)
+        self.update_state(
+            state=states.FAILURE,
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)}
+        )
+        raise Ignore()
+
     except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
         error_msg = (
             AppConfig.VALIDATION_ERROR[type(e).__name__]
@@ -202,6 +235,7 @@ def limit_check(self, client_id: str, category_id: str) -> dict:
                 AND payment_category_id = '{category_id}'
                 AND date_trunc('month', transaction_timestamp) = date_trunc('month', CURRENT_DATE)
         """
+        logger.info(f"Executing query:\n{query}")
 
         with db_manager.get_session() as session:
             dados = session.execute(text(query)).all()
@@ -214,6 +248,7 @@ def limit_check(self, client_id: str, category_id: str) -> dict:
             return {
                 "status": "success",
                 "message": "Limit check completed",
+                "category_id": category_id,
                 "total_revenue": total_revenue,
                 "limit_value": limit_value,
                 "limit_exceeded": limit_exceeded,
@@ -255,6 +290,7 @@ def limit_check_all(self, client_id: str, filter: Optional[dict] = {}) -> dict:
                 )
                 select
                     pc.payment_category_name,
+                    pc.payment_category_id,
                     l.limit_value,
                     t.total_revenue
                 from limits l
@@ -263,6 +299,7 @@ def limit_check_all(self, client_id: str, filter: Optional[dict] = {}) -> dict:
                     left join payment_categories pc
                         on l.category_id = pc.payment_category_id
         """
+        logger.info(f"Executing query:\n{query}")
 
         with db_manager.get_session() as session:
             dados = session.execute(text(query)).all()
@@ -285,9 +322,168 @@ def limit_check_all(self, client_id: str, filter: Optional[dict] = {}) -> dict:
             meta={"exc_type": type(e).__name__, "exc_message": str(e)},
         )
         raise Ignore()
-        
-        
+    
+@app.task(bind=True)
+def get_user_info(self, client_id: str) -> dict:
+    """Get user info."""
+    try:
+        logger.info(f"Starting user info retrieval for client_id: {client_id}")
 
+        query = f"""
+            select
+                *
+            from clients
+            where
+                client_id = '{client_id}'
+        """
+        logger.info(f"Executing query:\n{query}")
+
+        with db_manager.get_session() as session:
+            dados = session.execute(text(query)).all()
+            df = pd.DataFrame(dados)
+
+            return {
+                "status": "success",
+                "message": "User info retrieved successfully",
+                "data": df.to_dict(orient="records")[0],
+            }
+    except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
+        error_msg = (
+            AppConfig.VALIDATION_ERROR[type(e).__name__]
+            if type(e).__name__ in AppConfig.VALIDATION_ERROR
+            else AppConfig.DATABASE_ERROR
+        )
+        logger.error(error_msg)
+        self.update_state(
+            state=states.FAILURE,
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)},
+        )
+        raise Ignore()
+    
+@app.task(bind=True)
+def list_all_cards(self, client_id: str, date: str) -> dict:
+    """List all cards for a client."""
+    try:
+        logger.info(f"Starting list all cards for client_id: {client_id}")
+
+        query = f"""
+            select
+                *
+            from cards
+            where
+                client_id = '{client_id}'
+        """
+        logger.info(f"Executing query:\n{query}")
+
+        detailed_query = f"""
+            with transactions_by_card as (
+                select
+                    transaction_id,
+                    card_id,
+                    transaction_type,
+                    transaction_revenue,
+                    payment_description,
+                    payment_categories.payment_category_name,
+                    payment_methods.payment_method_name,
+                    date(transaction_timestamp) as transaction_date,
+                    installment_payment,
+                    installment_number
+                from transactions
+                    left join payment_categories 
+                        on transactions.payment_category_id = payment_categories.payment_category_id
+                    left join payment_methods 
+                        on transactions.payment_method_id = payment_methods.payment_method_id
+                where
+                    client_id = '{client_id}'
+                    and card_id is not null
+                    and date_trunc('month', transaction_timestamp) = date_trunc('month', '{date}'::timestamp)
+            )
+            select
+                c.card_id,
+                c.card_name,
+                c.payment_date,
+                t.transaction_date,
+                t.transaction_id,
+                t.transaction_type,
+                t.transaction_revenue,
+                t.payment_description,
+                t.payment_category_name,
+                t.payment_method_name,
+                t.installment_payment,
+                t.installment_number
+            from cards c
+                left join transactions_by_card t
+                    on c.card_id = t.card_id
+        """
+        logger.info(f"Executing query:\n{detailed_query}")
+
+        with db_manager.get_session() as session:
+            detailed_dados = session.execute(text(detailed_query)).all()
+            detailed_df = pd.DataFrame(detailed_dados)
+
+            dados = session.execute(text(query)).all()
+            df = pd.DataFrame(dados)
+
+            # Constrói lista de cartões e mapeia detalhes por card_id
+            cards_list = df.to_dict(orient="records")
+            detailed_records = detailed_df.to_dict(orient="records")
+
+            credit_by_card = {}
+            debit_by_card = {}
+            for record in detailed_records:
+                card_id = record.get("card_id")
+                payment_method_name = record.get("payment_method_name")
+                if card_id is None:
+                    continue
+                if payment_method_name == "Crédito":
+                    credit_by_card.setdefault(card_id, []).append(record)
+                elif payment_method_name == "Débito":
+                    debit_by_card.setdefault(card_id, []).append(record)
+                else:
+                    continue
+
+            # Adiciona os detalhes correspondentes a cada cartão
+            for card in cards_list:
+                card_id = card.get("card_id")
+                card["credit"] = credit_by_card.get(card_id, [])
+                card["debit"] = debit_by_card.get(card_id, [])
+
+            data = {
+                "cards": cards_list,
+            }
+
+            return {
+                "status": "success",
+                "message": "Cards list retrieved successfully",
+                "data": data,
+            }
+    except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
+        error_msg = (
+            AppConfig.VALIDATION_ERROR[type(e).__name__]
+            if type(e).__name__ in AppConfig.VALIDATION_ERROR
+            else AppConfig.DATABASE_ERROR
+        )
+        logger.error(error_msg)
+        self.update_state(
+            state=states.FAILURE,
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)},
+        )
+        raise Ignore()
+    
+# @app.task(bind=True)
+# def get_card_extract(self, client_id: str, card_id: str) -> dict:
+#     """Get card extract."""
+#     try:
+#         logger.info(f"Starting card extract for client_id: {client_id}, card_id: {card_id}")
+        
+#         query = f"""
+#             select
+#                 *
+#             from transactions
+#             where
+#                 client_id = '{client_id}'
+#                 and card_id = '{card_id}'
+#     except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
 
 # def limit_check_debug(
 #         client_id: str,

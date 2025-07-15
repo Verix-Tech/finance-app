@@ -199,16 +199,59 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif endpoint == "/transactions/update":
             if db_response.status_code == 200:
                 await update.message.reply_text(message_id + "\nTransação atualizada com sucesso!")
+            elif db_response.status_code == 400:
+                await update.message.reply_text(message_id + "\nDesculpe, não é possível atualizar transações com parcelamento. Por favor, tente deletar a transação e criar uma nova.")
+            elif db_response.status_code == 404:
+                await update.message.reply_text(message_id + "\nDesculpe, não consegui encontrar a transação. Por favor, tente novamente.")
             else:
                 await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+
         elif endpoint == "/transactions/delete":
             if db_response.status_code == 200:
                 await update.message.reply_text(message_id + "\nTransação(ões) deletada(s) com sucesso!")
+            elif db_response.status_code == 404:
+                await update.message.reply_text(message_id + "\nDesculpe, não consegui encontrar a transação. Por favor, tente novamente.")
             else:
                 await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+
         elif endpoint == "/limits/create":
             if db_response.status_code == 200:
                 await update.message.reply_text(message_id + "\nLimite criado com sucesso!")
+            else:
+                await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+
+        elif endpoint == "/limits/check":
+            if db_response.status_code == 200:
+                data = db_response.json().get("data", {})
+                category_id = str(data.get("category_id", "0"))
+                category_name = BotConfig().CATEGORIAS.get(category_id, "Categoria")
+                valor = data.get("total_revenue", 0)
+                limite = data.get("limit_value", 0)
+
+                if data.get("limit_exceeded"):
+                    await update.message.reply_text(message_id + f"\nVocê utilizou R$ {valor:.2f} de R$ {limite:.2f} no limite da categoria '{category_name}'.\nVocê excedeu o limite da categoria '{category_name}' deste mês. 🚫")
+                else:
+                    await update.message.reply_text(message_id + f"\nVocê utilizou R$ {valor:.2f} de R$ {limite:.2f} no limite da categoria '{category_name}'. 💡")
+            else:
+                await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+
+        elif endpoint == "/limits/check-all":
+            if db_response.status_code == 200:
+                data = db_response.json().get("data", {})["data"]
+                lines = []
+                for item in data:
+                    category_id = str(item.get("payment_category_id", "0"))
+                    category_name = BotConfig().CATEGORIAS.get(category_id, "Categoria")
+                    if item.get("limit_exceeded"):
+                        status_limite = "🚫 Excedido"
+                    else:
+                        total = item.get("total_revenue", 0)
+                        limite = item.get("limit_value", 0)
+                        status_limite = f"R$ {total:.2f} / R$ {limite:.2f} - {total/limite*100:.2f}% 🟩" if total/limite*100 < 100 else f"R$ {total:.2f} / R$ {limite:.2f} - {total/limite*100:.2f}% 🟥"
+                    lines.append(f"- {category_name}: {status_limite}")
+
+                mensagem_limites = "\n".join(lines) if lines else f"Nenhum limite encontrado."
+                await update.message.reply_text(message_id + "\n" + open("messages/limits.txt", "r", encoding="utf-8").read().format(mensagem_limites))
             else:
                 await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
         else:

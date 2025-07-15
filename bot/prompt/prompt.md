@@ -50,6 +50,8 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 | Atualizar transação | `/transactions/update` |
 | Excluir transação | `/transactions/delete` |
 | Adicionar ou atualizar um limite | `/limits/create` |
+| Verificar limite por categoria | `/limits/check` |
+| Verificar limites de todas as categorias | `/limits/check-all` |
 
 ## Parâmetros por Tipo de Operação
 
@@ -66,6 +68,8 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 - `payment_description` (str): Descrição do gasto/produto/local
 - `payment_category_id` (str): ID da categoria da transação (ver lista abaixo)
 - `transaction_timestamp` (str): Data da transação (formato: DD/MM/YYYY ou DD/MM)
+- `installment_payment` (bool): Indica se a transação é parcelada
+- `installment_number` (int): Número de parcelas da transação
 
 ### 2. Gerar Relatório (`/reports/generate`)
 
@@ -99,6 +103,16 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 - `category_id` (str): ID da categoria que terá um limite criado (consultar ID's abaixo)
 - `limit_value` (float): Valor do limite para a categoria criada
 
+### 6. Verificar Limite por Categoria (`/limits/check`)
+
+**Parâmetros obrigatórios:**
+- `category_id` (str): ID da categoria para checagem do limite
+
+### 7. Verificar Limites de Todas as Categorias (`/limits/check-all`)
+
+**Parâmetros opcionais:**
+- `filter` (dict): Filtro opcional para refinar as categorias verificadas
+
 ## Categorias de Pagamento
 
 | ID | Categoria | Exemplos |
@@ -110,7 +124,8 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 | `5` | `Pet` | ração, veterinário, pet shop, cachorro, gato, animal |
 | `6` | `Contas` | conta de luz, fatura, conta de água, parcela, boleto, internet |
 | `7` | `Educação` | faculdade, escola, curso, material escolar, livro, estudo |
-| `8` | `Lazer` | piscina, jogos, steam, passeio, cinema, show, festa |
+| `8` | `Lazer` | piscina, jogos, steam, passeio, cinema, show, festa, computador, eletrônicos, celular |
+| `9` | `Transporte` | uber, 99, taxi, gasolina, carro, moto, mototaxi, metro, trem |
 | `0` | `Outros` | qualquer coisa não categorizada |
 
 ## Métodos de Pagamento
@@ -121,6 +136,7 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 | `2` | `Crédito` | cartão, crédito, cartão de crédito |
 | `3` | `Débito` | débito, cartão de débito |
 | `4` | `Dinheiro` | dinheiro, cash, papel |
+| `5` | `Cheque Especial` | cheque, cheque especial |
 | `0` | `Não Informado` | quando não há citação |
 
 ## Configuração de Filtros
@@ -200,6 +216,22 @@ Para relatórios filtrados, use a estrutura:
 }
 ```
 
+**Usuário:** "Quanto gastei hoje?" \
+**Resposta:**
+```json
+{
+  "message": "Estou gerando o relatório de hoje para você! 📊",
+  "api_endpoint": "/reports/generate",
+  "params": {
+    "days_before": "0",
+    "aggr": {
+      "mode": "day",
+      "activated": true
+    }
+  }
+}
+```
+
 ### Atualizar Transações
 **Usuário:** "Atualize a transação 2, mude a descrição para Show do Matue" \
 **Resposta:**
@@ -248,6 +280,32 @@ Para relatórios filtrados, use a estrutura:
   "params": {
     "category_id": "1",
     "limit_value": 400
+  }
+}
+```
+
+### Checar um limite único
+**Usuário:** "Me mostre o meu limite de alimentação" \
+**Resposta:**
+```json
+{
+  "message": "Certo João! Estou checando seu limite da categoria 'Alimentação'! 📊",
+  "api_endpoint": "/limits/check",
+  "params": {
+    "category_id": "1"
+  }
+}
+```
+
+### Checar todos os limites
+**Usuário:** "Me mostre meus limites" \
+**Resposta:**
+```json
+{
+  "message": "Certo João! Estou checando seus limites! 📊",
+  "api_endpoint": "/limits/check-all",
+  "params": {
+    "1": "1"
   }
 }
 ```

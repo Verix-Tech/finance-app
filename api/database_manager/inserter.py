@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import uuid
+from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, Union
 
@@ -9,11 +10,50 @@ from pytz import timezone
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from utils.utils import validate_and_format_date
+
 from errors.errors import (
     SubscriptionError,
     ClientNotExistsError,
     TransactionNotExistsError,
 )
+
+
+# Configure logging
+def configure_logging():
+    """Configure application logging."""
+    log_dir = Path(__file__).resolve().parent.parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "inserter.log"
+
+    # Create file handler
+    file_handler = logging.FileHandler(log_file.as_posix())
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+
+    # Attach the handler to the root logger if not already present
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    if not any(
+        isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", None) == str(log_file)
+        for h in root_logger.handlers
+    ):
+        root_logger.addHandler(file_handler)
+
+    # Also ensure a stream handler exists for console output
+    if not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
+        root_logger.addHandler(logging.StreamHandler())
+
+    # Reduce noise from verbose libraries
+    logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
+    logging.getLogger("psycopg2").setLevel(logging.ERROR)
+
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 
 class DataInserter:
@@ -33,6 +73,7 @@ class DataInserter:
         self.customers_table = "clients"
         self.transactions_table = "transactions"
         self.limits_table = "limits"
+        self.cards_table = "cards"
         client_id_result = self._get_client_id()
         self.client_id_uuid = (
             client_id_result if client_id_result is not None else str(uuid.uuid4())
@@ -100,6 +141,7 @@ class DataInserter:
         """
         set_clause = ", ".join(f"{k} = :{k}" for k in set_values.keys())
         query = text(f"UPDATE {table} " f"SET {set_clause} " f"WHERE {where_condition}")
+        logger.info(f"Executing query:\n{query}")
         self.session.execute(query, set_values)
         self.session.commit()
 
@@ -114,6 +156,7 @@ class DataInserter:
         columns = ", ".join(values.keys())
         placeholders = ", ".join(f":{k}" for k in values.keys())
         query = text(f"INSERT INTO {table} ({columns}) " f"VALUES ({placeholders})")
+        logger.info(f"Executing query:\n{query}")
         self.session.execute(query, values)
         self.session.commit()
 
@@ -150,6 +193,7 @@ class DataInserter:
         where_clause = " AND ".join(where_conditions)
 
         query = text(f"DELETE FROM {table} " f"WHERE {where_clause}")
+        logger.info(f"Executing query:\n{query}")
         self.session.execute(query, query_params)
         self.session.commit()
 
@@ -167,6 +211,7 @@ class DataInserter:
             f"SELECT client_id FROM {self.customers_table} "
             f"WHERE platform_id = :platform_id"
         )
+        logger.info(f"Executing query:\n{query}")
         result = self.session.execute(query, {"platform_id": self.platform_id}).first()
 
         if not result:
@@ -187,6 +232,7 @@ class DataInserter:
             f"SELECT subscribed FROM {self.customers_table} "
             f"WHERE client_id = :client_id"
         )
+        logger.info(f"Executing query:\n{query}")
         result = self.session.execute(query, {"client_id": self.client_id_uuid}).first()
 
         if not result or not result[0]:
@@ -209,6 +255,7 @@ class DataInserter:
             f"SELECT client_id FROM {self.transactions_table} "
             f"WHERE client_id = :client_id AND transaction_id = :transaction_id"
         )
+        logger.info(f"Executing query:\n{query}")
         result = self.session.execute(
             query, {"client_id": self.client_id_uuid, "transaction_id": transaction_id}
         ).first()
@@ -281,7 +328,8 @@ class DataInserter:
                 client_id = :client_id
         """
         )
-
+        
+        logger.info(f"Executing query:\n{query}")
         result = self.session.execute(query, {"client_id": self.client_id_uuid}).first()
         if not result or not result[0]:
             transaction_id = 1
@@ -296,8 +344,11 @@ class DataInserter:
         transaction_type: str,
         transaction_timestamp: Optional[str] = None,
         payment_method_id: Optional[str] = None,
+        card_id: Optional[int] = None,
         payment_description: Optional[str] = None,
         payment_category_id: Optional[str] = None,
+        installment_payment: Optional[bool] = None,
+        installment_number: Optional[int] = None,
     ) -> Dict:
         """
         Insert a transaction record for the client.
@@ -323,10 +374,33 @@ class DataInserter:
         )
 
         transaction_timestamp = (
-            transaction_timestamp
+            validate_and_format_date(transaction_timestamp)
             if transaction_timestamp
             else datetime.now(self.timezone).strftime("%Y-%m-%d")
         )
+
+        # ------------------------------------------------------------------
+        # Ajusta o timestamp de acordo com a data de pagamento do cartão, se
+        # aplicável. Compras após o dia de pagamento pertencem à fatura do
+        # mês seguinte.
+        # ------------------------------------------------------------------
+        if card_id is not None and payment_method_id == "2":
+            payment_date = self._get_card_payment_date(card_id)
+            if payment_date is not None:
+                try:
+                    date_obj = datetime.strptime(transaction_timestamp, "%Y-%m-%d")
+                    # Se o dia da compra for maior que o dia de pagamento,
+                    # empurra para o mês seguinte.
+                    if date_obj.day > payment_date:
+                        date_obj += relativedelta(months=1)
+                    # Garante que o dia permaneça consistente caso o novo
+                    # mês não possua o mesmo número de dias.
+                    transaction_timestamp = date_obj.strftime("%Y-%m-%d")
+                except ValueError:
+                    # Caso a data seja inválida, mantemos como está e deixamos
+                    # o fluxo normal tratar o erro posteriormente.
+                    pass
+
         transaction_data = {
             "transaction_timestamp": transaction_timestamp,
             "client_id": self.client_id_uuid,
@@ -335,11 +409,35 @@ class DataInserter:
             "transaction_revenue": transaction_revenue,
             "transaction_type": transaction_type,
             "payment_method_id": payment_method_id,
+            "card_id": card_id,
             "payment_description": payment_description,
             "payment_category_id": payment_category_id,
+            "installment_payment": installment_payment,
+            "installment_number": installment_number
         }
 
         try:
+            if installment_payment:
+                transaction_data["transaction_revenue"] = (
+                    transaction_revenue / float(installment_number or 1)
+                )
+                for i in range(installment_number or 0):
+                    transaction_data["installment_number"] = (i + 1) or 1
+                    transaction_data["transaction_timestamp"] = (
+                        datetime.strptime(transaction_timestamp, "%Y-%m-%d")
+                        + relativedelta(months=i)
+                    ).strftime("%Y-%m-%d")
+                    transaction_data["internal_transaction_id"] = (
+                        _internal_transaction_id + f"{i + 1}"
+                    )
+                    self._execute_insert(
+                        table=self.transactions_table, values=transaction_data
+                    )
+
+                return transaction_data
+            else:
+                transaction_data["installment_payment"] = False
+                transaction_data["installment_number"] = 0
             self._execute_insert(table=self.transactions_table, values=transaction_data)
         except Exception as e:
             self.session.rollback()
@@ -446,12 +544,15 @@ class DataInserter:
         self._client_exists()
         self._transaction_exists(transaction_id)
         self._has_active_subscription()
-
+            
         update_values = {
             k: v
             for k, v in data.items()
             if k not in ["client_id", "transaction_id", "platform_id"]
         }
+
+        if self._transaction_has_installment(transaction_id):
+            raise Exception("Transaction with installment cannot be updated")
 
         try:
             self._execute_update(
@@ -487,6 +588,78 @@ class DataInserter:
         except Exception as e:
             self.session.rollback()
             raise e
+        
+    @property
+    def get_card_id(self):
+        query = text(
+            f"""
+            SELECT 
+                MAX(card_id) 
+            FROM {self.cards_table}
+            WHERE
+                client_id = :client_id
+        """
+        )
+        
+        logger.info(f"Executing query:\n{query}")
+        result = self.session.execute(query, {"client_id": self.client_id_uuid}).first()
+        if not result or not result[0]:
+            card_id = 1
+        else:
+            card_id = result[0] + 1
+
+        return card_id
+    
+    def insert_card(self, data: Dict[str, Any]) -> None:
+        """
+        Insert a card record for the client.
+        """
+        self._client_exists()
+        self._has_active_subscription()
+
+        data["internal_card_id"] = str(uuid.uuid4())
+        data["card_id"] = self.get_card_id
+        data["client_id"] = self.client_id_uuid
+        data.pop("platform_id")
+        
+        try:
+            self._execute_insert(table=self.cards_table, values=data)
+        except Exception as e:
+            self.session.rollback()
+            raise e
+
+    def _get_card_payment_date(self, card_id: int) -> Optional[int]:
+        """Obter a data de pagamento (dia do mês) do cartão informado.
+
+        Args:
+            card_id: Identificador do cartão (sequencial por cliente)
+
+        Returns:
+            Um inteiro representando o dia de pagamento se encontrado, ou None caso
+            o cartão não exista para o cliente.
+        """
+        query = text(
+            f"SELECT payment_date FROM {self.cards_table} "
+            "WHERE client_id = :client_id AND card_id = :card_id"
+        )
+        logger.info(f"Executing query:\n{query}")
+        result = self.session.execute(
+            query, {"client_id": self.client_id_uuid, "card_id": card_id}
+        ).first()
+
+        return result[0] if result else None
+    
+    def _transaction_has_installment(self, transaction_id: int) -> bool:
+        """
+        Check if the transaction has installment.
+        """
+        query = text(
+            f"SELECT installment_payment FROM {self.transactions_table} "
+            "WHERE transaction_id = :transaction_id"
+        )
+        logger.info(f"Executing query:\n{query}")
+        result = self.session.execute(query, {"transaction_id": transaction_id}).first()
+        return True if result and result[0] else False
 
 
 if __name__ == "__main__":
