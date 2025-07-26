@@ -153,6 +153,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         response["params"]["transaction_revenue"],
                         response["params"]["payment_description"],
                         BotConfig().CATEGORIAS[response["params"]["payment_category_id"]],
+                        response["params"]["card_id"],
                         BotConfig().METODOS_PAGAMENTO[response["params"]["payment_method_id"]],
                         response["params"]["transaction_timestamp"],
                         db_response.json()["data"]["transaction_id"],

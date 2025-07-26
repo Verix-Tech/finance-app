@@ -68,6 +68,7 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 - `payment_description` (str): Descrição do gasto/produto/local
 - `payment_category_id` (str): ID da categoria da transação (ver lista abaixo)
 - `transaction_timestamp` (str): Data da transação (formato: DD/MM/YYYY ou DD/MM)
+- `card_id` (str): Cartão do usuário
 - `installment_payment` (bool): Indica se a transação é parcelada
 - `installment_number` (int): Número de parcelas da transação
 
@@ -195,6 +196,23 @@ Para relatórios filtrados, use a estrutura:
     "transaction_type": "Despesa",
     "payment_description": "Pizza",
     "payment_category_id": "1"
+  }
+}
+```
+
+**Usuário:** "Computador 1000 crédito cartao 1" \
+**Resposta:**
+```json
+{
+  "message": "Olá João! Gastou R$ 10 em pizza? Espero que tenha gostado! 🍕 Estou registrando sua transação no banco de dados!",
+  "api_endpoint": "/transactions/create",
+  "params": {
+    "transaction_revenue": 10.0,
+    "transaction_type": "Despesa",
+    "payment_description": "Pizza",
+    "payment_category_id": "8",
+    "payment_method_id": "2",
+    "card_id": "1"
   }
 }
 ```
