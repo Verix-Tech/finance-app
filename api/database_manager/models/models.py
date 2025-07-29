@@ -19,6 +19,7 @@ class User(Base):
 
     username = Column(String, primary_key=True)
     email = Column(String, nullable=False)
+    phone = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
     disabled = Column(Boolean, nullable=False)
     hashed_password = Column(String, nullable=False)

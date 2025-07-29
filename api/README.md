@@ -4,20 +4,21 @@ A FastAPI-based financial management application that handles user authenticatio
 
 ## Features
 
-- User authentication and authorization using JWT tokens
-- Transaction management (create, update, delete)
-- User subscription management
-- Database health monitoring
-- Secure password handling
-- Docker containerization
-- PostgreSQL database integration
-- **Background task processing with Celery**
-- **Redis message broker integration**
-- **Asynchronous data generation and extraction**
-- **Task status monitoring and tracking**
-- **Comprehensive error handling and logging**
-- **Automated testing suite**
-- **Development and production build automation**
+- Autenticação e autorização de usuários via JWT
+- Gerenciamento de transações (criar, atualizar, deletar)
+- Gerenciamento de cartões (criar, listar)
+- Gerenciamento de limites por categoria (criar, checar individual e em lote)
+- Gerenciamento de assinaturas de usuários (conceder, revogar)
+- Consulta de informações do usuário
+- Geração de relatórios financeiros customizados
+- Monitoramento de saúde da API
+- Monitoramento de saúde do banco de dados
+- Processamento assíncrono de tarefas com Celery
+- Integração com Redis como broker
+- Exportação de dados em CSV/JSON
+- Logging estruturado e tratamento de erros abrangente
+- Testes automatizados
+- Automatização de build e desenvolvimento
 
 ## Tech Stack
 
@@ -99,27 +100,38 @@ finance-app/
 
 ## API Endpoints
 
-### Authentication
-- `POST /token` - Get access token (login)
+### Autenticação
+- `POST /auth/token` — Gera token de acesso (login)
+- `POST /auth/register` — Registra novo usuário
 
-### Users
-- `POST /create-user` - Create or update user
+### Usuários
+- `POST /users/create` — Cria ou atualiza usuário
+- `POST /users/exists` — Verifica se o usuário existe
+- `POST /users/get-user-info` — Obtém informações do usuário
 
-### Transactions
-- `POST /create-transaction` - Create new transaction
-- `POST /update-transaction` - Update existing transaction
-- `POST /delete-transaction` - Delete transaction
+### Transações
+- `POST /transactions/create` — Cria nova transação
+- `POST /transactions/update` — Atualiza transação existente
+- `POST /transactions/delete` — Remove transação
 
-### Data Generation & Background Tasks
-- `POST /generate-data` - Start background data generation task
-- `GET /task-status/{task_id}` - Check task status and results
+### Cartões
+- `POST /cards/create` — Cria um novo cartão para o cliente
+- `POST /cards/list-all` — Lista todos os cartões do cliente
 
-### Subscription Management
-- `POST /grant-subscription` - Grant subscription to user
-- `POST /revoke-subscription` - Revoke user subscription
+### Limites
+- `POST /limits/create` — Cria um novo limite para categoria
+- `POST /limits/check` — Verifica se o limite foi excedido para uma categoria
+- `POST /limits/check-all` — Verifica se o limite foi excedido para todas as categorias
+
+### Assinaturas
+- `POST /subscriptions/grant` — Concede assinatura ao usuário
+- `POST /subscriptions/revoke` — Revoga assinatura do usuário
+
+### Relatórios
+- `POST /reports/generate` — Gera extrato/relatório financeiro do cliente
 
 ### Health Check
-- `GET /health` - Check API health status
+- `GET /health/` — Verifica status da API
 
 ## Background Task Processing
 

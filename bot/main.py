@@ -134,7 +134,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         {"message_id": message_id, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "message": response.get("message", "Desculpe, não consegui gerar uma resposta."), "type": endpoint, "is_bot": True, "client_id": str(user_id), "metadata": response}
     ])
 
-    await update.message.reply_text(message_id + "\n" + response.get("message", "Desculpe, não consegui gerar uma resposta."))
+    await update.message.reply_text(response.get("message", "Desculpe, não consegui gerar uma resposta."))
 
     if response.get("api_endpoint"):
         db_response = SQLDBConfig().send_request(
@@ -153,7 +153,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         response["params"]["transaction_revenue"],
                         response["params"]["payment_description"],
                         BotConfig().CATEGORIAS[response["params"]["payment_category_id"]],
-                        response["params"]["card_id"],
+                        response.get("params", {}).get("card_id", None),
                         BotConfig().METODOS_PAGAMENTO[response["params"]["payment_method_id"]],
                         response["params"]["transaction_timestamp"],
                         db_response.json()["data"]["transaction_id"],
@@ -170,10 +170,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
                 if limit_response.status_code == 200:
                     if limit_response.json()["data"]["limit_exceeded"] == True:
-                        await update.message.reply_text(message_id + f"\nVocê atingiu o seu limite de gastos de '{BotConfig().CATEGORIAS[response['params']['payment_category_id']]}' deste mês. 🚫")
+                        await update.message.reply_text(f"\nVocê atingiu o seu limite de gastos de '{BotConfig().CATEGORIAS[response['params']['payment_category_id']]}' deste mês. 🚫")
                     elif limit_response.json()["data"]["total_revenue"] >= utils.get_limit_percentage(limit_response.json()["data"]["limit_value"]) and \
                         limit_response.json()["data"]["total_revenue"] < limit_response.json()["data"]["limit_value"]:
-                        await update.message.reply_text(message_id + f"\nVocê atingiu 90% do seu limite de gastos de '{BotConfig().CATEGORIAS[response['params']['payment_category_id']]}' deste mês. 🚫")
+                        await update.message.reply_text(f"\nVocê atingiu 90% do seu limite de gastos de '{BotConfig().CATEGORIAS[response['params']['payment_category_id']]}' deste mês. 🚫")
                 
         elif endpoint == "/reports/generate":
             status_code = 0
@@ -186,7 +186,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         report = utils.format_report(csv_buffer, response.get("params", {}).get("aggr", {}).get("activated", False))
                         await update.message.reply_photo(utils.create_table_image(report, (4, 4), "Relatório", 600), caption=open("messages/report.txt", "r", encoding="utf-8").read().format(message_id))
                     except IndexError:
-                        await update.message.reply_text(message_id + "\nVocê não possui transações para gerar relatório no período selecionado.")
+                        await update.message.reply_text("\nVocê não possui transações para gerar relatório no período selecionado.")
                         return
 
                     return
@@ -194,32 +194,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     time.sleep(1)
                     continue
                 else:
-                    await update.message.reply_text(message_id + "\n" + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+                    await update.message.reply_text("\n" + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
                     return
                 
         elif endpoint == "/transactions/update":
             if db_response.status_code == 200:
-                await update.message.reply_text(message_id + "\nTransação atualizada com sucesso!")
+                await update.message.reply_text("\nTransação atualizada com sucesso!")
             elif db_response.status_code == 400:
-                await update.message.reply_text(message_id + "\nDesculpe, não é possível atualizar transações com parcelamento. Por favor, tente deletar a transação e criar uma nova.")
+                await update.message.reply_text("\nDesculpe, não é possível atualizar transações com parcelamento. Por favor, tente deletar a transação e criar uma nova.")
             elif db_response.status_code == 404:
-                await update.message.reply_text(message_id + "\nDesculpe, não consegui encontrar a transação. Por favor, tente novamente.")
+                await update.message.reply_text("\nDesculpe, não consegui encontrar a transação. Por favor, tente novamente.")
             else:
-                await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+                await update.message.reply_text("\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
 
         elif endpoint == "/transactions/delete":
             if db_response.status_code == 200:
-                await update.message.reply_text(message_id + "\nTransação(ões) deletada(s) com sucesso!")
+                await update.message.reply_text("\nTransação(ões) deletada(s) com sucesso!")
             elif db_response.status_code == 404:
-                await update.message.reply_text(message_id + "\nDesculpe, não consegui encontrar a transação. Por favor, tente novamente.")
+                await update.message.reply_text("\nDesculpe, não consegui encontrar a transação. Por favor, tente novamente.")
             else:
-                await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+                await update.message.reply_text("\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
 
         elif endpoint == "/limits/create":
             if db_response.status_code == 200:
-                await update.message.reply_text(message_id + "\nLimite criado com sucesso!")
+                await update.message.reply_text("\nLimite criado com sucesso!")
             else:
-                await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+                await update.message.reply_text("\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
 
         elif endpoint == "/limits/check":
             if db_response.status_code == 200:
@@ -230,11 +230,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 limite = data.get("limit_value", 0)
 
                 if data.get("limit_exceeded"):
-                    await update.message.reply_text(message_id + f"\nVocê utilizou R$ {valor:.2f} de R$ {limite:.2f} no limite da categoria '{category_name}'.\nVocê excedeu o limite da categoria '{category_name}' deste mês. 🚫")
+                    await update.message.reply_text(f"\nVocê utilizou R$ {valor:.2f} de R$ {limite:.2f} no limite da categoria '{category_name}'.\nVocê excedeu o limite da categoria '{category_name}' deste mês. 🚫")
                 else:
-                    await update.message.reply_text(message_id + f"\nVocê utilizou R$ {valor:.2f} de R$ {limite:.2f} no limite da categoria '{category_name}'. 💡")
+                    await update.message.reply_text(f"\nVocê utilizou R$ {valor:.2f} de R$ {limite:.2f} no limite da categoria '{category_name}'. 💡")
             else:
-                await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+                await update.message.reply_text("\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
 
         elif endpoint == "/limits/check-all":
             if db_response.status_code == 200:
@@ -252,11 +252,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     lines.append(f"- {category_name}: {status_limite}")
 
                 mensagem_limites = "\n".join(lines) if lines else f"Nenhum limite encontrado."
-                await update.message.reply_text(message_id + "\n" + open("messages/limits.txt", "r", encoding="utf-8").read().format(mensagem_limites))
+                await update.message.reply_text("\n" + open("messages/limits.txt", "r", encoding="utf-8").read().format(mensagem_limites))
             else:
-                await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+                await update.message.reply_text("\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
         else:
-            await update.message.reply_text(message_id + "\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+            await update.message.reply_text("\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
 
 def main():
     app = Application.builder().token(BotConfig().TELEGRAM_TOKEN).build()

@@ -56,7 +56,7 @@ class UserBase(BaseModel):
     email: Optional[str] = None
     full_name: Optional[str] = None
     disabled: Optional[bool] = None
-
+    phone: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -100,6 +100,7 @@ def get_user(username: str) -> Optional[UserInDB]:
                 full_name=str(user.full_name) if user.full_name is not None else None,
                 disabled=bool(user.disabled) if user.disabled is not None else None,
                 hashed_password=str(user.hashed_password),
+                phone=str(user.phone) if user.phone is not None else None,
             )
         return None
 
@@ -162,6 +163,7 @@ def create_user(user_data: UserCreate) -> UserInDB:
             full_name=user_data.full_name,
             hashed_password=hashed_password,
             disabled=False,
+            phone=user_data.phone,
         )
         session.add(db_user)
         session.commit()
@@ -173,4 +175,5 @@ def create_user(user_data: UserCreate) -> UserInDB:
             full_name=str(db_user.full_name) if db_user.full_name is not None else None,
             disabled=bool(db_user.disabled) if db_user.disabled is not None else None,
             hashed_password=str(db_user.hashed_password),
+            phone=str(db_user.phone) if db_user.phone is not None else None,
         )

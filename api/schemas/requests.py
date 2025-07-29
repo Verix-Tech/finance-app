@@ -97,7 +97,8 @@ class RegisterUserRequest(BaseModel):
     password: str = Field(..., description="Password")
     email: str = Field(..., description="Email")
     full_name: str = Field(..., description="Full name")
-
+    phone: str = Field(..., description="Phone number")
+    
 class CreateCardRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
     card_name: str = Field(..., description="Card name")

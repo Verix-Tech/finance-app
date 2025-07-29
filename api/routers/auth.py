@@ -43,7 +43,8 @@ async def register_user(form_data: RegisterUserRequest):
         password=form_data.password,
         email=form_data.email,
         full_name=form_data.full_name,
-        disabled=False
+        disabled=False,
+        phone=form_data.phone
     )
     create_user(user)
     if not user.username:
