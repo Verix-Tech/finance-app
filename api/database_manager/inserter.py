@@ -85,6 +85,9 @@ class DataInserter:
     @staticmethod
     def _configure_logging() -> None:
         """Configure logging settings."""
+        # Ensure logs directory exists
+        log_dir = Path(__file__).resolve().parent.parent / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

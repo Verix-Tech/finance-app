@@ -5,6 +5,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 import pandas as pd
 import logging
+import os
 from datetime import datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import DataError, ProgrammingError, StatementError
@@ -13,6 +14,8 @@ from database_manager.connector import DatabaseManager
 
 def configure_logging():
     """Configure application logging."""
+    # Ensure logs directory exists
+    os.makedirs("logs", exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

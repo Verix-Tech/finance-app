@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session, sessionmaker, scoped_session
 # Configure logging
 def configure_logging() -> None:
     """Configure the logging settings for the application."""
+    # Ensure logs directory exists
+    os.makedirs("logs", exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -229,6 +231,8 @@ class DatabaseMonitor:
         """Configure logging for the monitor."""
         logger = logging.getLogger("db_monitor")
         logger.setLevel(logging.INFO)
+        # Ensure logs directory exists
+        os.makedirs("logs", exist_ok=True)
         handler = logging.FileHandler("logs/database_health.log")
         formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
         handler.setFormatter(formatter)

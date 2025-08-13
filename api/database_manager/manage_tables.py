@@ -5,6 +5,7 @@ root_dir = Path(__file__).parent.parent
 sys.path.append(str(root_dir))
 
 import logging
+import os
 from os import getenv
 from urllib.parse import quote_plus
 from sqlalchemy import text
@@ -20,6 +21,8 @@ from auth.auth import create_user, UserCreate
 
 
 def configure_logging():
+    # Ensure logs directory exists
+    os.makedirs("logs", exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

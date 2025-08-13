@@ -1,4 +1,5 @@
 import logging
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,6 +10,8 @@ from routers import auth, users, transactions, limits, subscriptions, reports, h
 
 def configure_logging():
     """Configure application logging."""
+    # Ensure logs directory exists
+    os.makedirs("logs", exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
