@@ -107,3 +107,7 @@ class CreateCardRequest(BaseModel):
 class ListAllCardsRequest(BaseModel):
     platform_id: str = Field(..., description="Platform identifier")
     date: str = Field(..., description="Date")
+
+class CheckTransactionRequest(BaseModel):
+    platform_id: str = Field(..., description="Platform identifier")
+    transaction_id: int = Field(..., description="Transaction ID")

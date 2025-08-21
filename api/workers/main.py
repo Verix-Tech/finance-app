@@ -469,6 +469,81 @@ def list_all_cards(self, client_id: str, date: str) -> dict:
             meta={"exc_type": type(e).__name__, "exc_message": str(e)},
         )
         raise Ignore()
+
+@app.task(bind=True)
+def check_transaction(
+    self,
+    client_id: str,
+    transaction_id: int
+) -> dict:
+    """Generate extract for a client with proper error handling."""
+    try:
+        logger.info(f"Starting transaction check for client_id: {client_id}")
+
+        query = f"""
+                SELECT
+                    transactions.client_id,
+                    transactions.transaction_id,
+                    MIN(transactions.transaction_timestamp) as transaction_timestamp,
+                    SUM(transactions.transaction_revenue) as transaction_revenue,
+                    ANY_VALUE(transactions.payment_description) as payment_description,
+                    ANY_VALUE(payment_categories.payment_category_name) as payment_category_name,
+                    ANY_VALUE(payment_methods.payment_method_name) as payment_method_name,
+                    ANY_VALUE(transactions.transaction_type) as transaction_type,
+                    ANY_VALUE(transactions.installment_payment) as installment_payment,
+                    SUM(transactions.installment_number) as installment_number,
+                    ANY_VALUE(cards.card_name) as card_name
+                FROM transactions
+                    LEFT JOIN 
+                        payment_categories 
+                            ON transactions.payment_category_id = payment_categories.payment_category_id
+                    LEFT JOIN 
+                        payment_methods 
+                            ON transactions.payment_method_id = payment_methods.payment_method_id
+                    LEFT JOIN 
+                        cards 
+                            ON transactions.card_id = cards.card_id
+                WHERE
+                    transactions.client_id = '{client_id}'
+                    AND transaction_id = '{transaction_id}'
+                GROUP BY
+                    transactions.client_id,
+                    transactions.transaction_id
+                """
+        logger.info(f"Executing query:\n{query}")
+
+        with db_manager.get_session() as session:
+            dados = session.execute(text(query)).all()
+            df = pd.DataFrame(dados)
+
+            logger.info(
+                f"Transaction check completed successfully for client_id: {client_id}"
+            )
+            return df.to_dict(orient="records")[0]
+
+    except pd.errors.EmptyDataError as e:
+        error_msg = (
+            AppConfig.EMPTY_DATA_ERROR
+        )
+        logger.error(error_msg)
+        self.update_state(
+            state=states.FAILURE,
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)}
+        )
+        raise Ignore()
+
+    except (ValueError, Exception, DataError, ProgrammingError, StatementError) as e:
+        error_msg = (
+            AppConfig.VALIDATION_ERROR[type(e).__name__]
+            if type(e).__name__ in AppConfig.VALIDATION_ERROR
+            else AppConfig.DATABASE_ERROR
+        )
+        logger.error(error_msg)
+        self.update_state(
+            state=states.FAILURE,
+            meta={"exc_type": type(e).__name__, "exc_message": str(e)},
+        )
+        raise Ignore()
     
 # @app.task(bind=True)
 # def get_card_extract(self, client_id: str, card_id: str) -> dict:

@@ -11,4 +11,4 @@ Irei resumir pra você o que foi armazenado.
 📅 Data: {6}
 🆔 ID: {7}
 
-Se algo não foi armazenado como esperado ou você desejar alterar alguma informação, é só pedir! ☺️
+Não foi como você esperava? Edite a transação digitando: 'Edite a transação xxx, categoria alimentação.'

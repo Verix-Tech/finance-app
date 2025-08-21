@@ -1,6 +1,9 @@
 # Dockerfile para a API refatorada
 FROM python:3.11-slim
 
+ARG APP_BUILD_ID
+ENV APP_BUILD_ID=${APP_BUILD_ID}
+
 # Definir variáveis de ambiente
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

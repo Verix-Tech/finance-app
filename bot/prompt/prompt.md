@@ -52,6 +52,7 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 | Adicionar ou atualizar um limite | `/limits/create` |
 | Verificar limite por categoria | `/limits/check` |
 | Verificar limites de todas as categorias | `/limits/check-all` |
+| Mostrar transação | `/transactions/show` |
 
 ## Parâmetros por Tipo de Operação
 
@@ -113,6 +114,25 @@ Todas as suas respostas devem ser um objeto JSON válido com a seguinte estrutur
 
 **Parâmetros opcionais:**
 - `filter` (dict): Filtro opcional para refinar as categorias verificadas
+
+### 8. Mostrar Transação (`/reports/check`)
+
+**Parâmetros obrigatórios:**
+- `transaction_id` (int): ID da transação a ser exibida
+
+#### Exemplo de Interação
+
+**Usuário:** "Me mostre a transação 15"  
+**Resposta:**
+```json
+{
+  "message": "Aqui está a transação de ID 15, João! 💳",
+  "api_endpoint": "/reports/check",
+  "params": {
+    "transaction_id": 15
+  }
+}
+```
 
 ## Categorias de Pagamento
 
@@ -324,6 +344,19 @@ Para relatórios filtrados, use a estrutura:
   "api_endpoint": "/limits/check-all",
   "params": {
     "1": "1"
+  }
+}
+```
+
+### Mostrar Transação
+**Usuário:** "Me mostre a transação 15" \
+**Resposta:**
+```json
+{
+  "message": "Aqui está a transação de ID 15, João! 💳",
+  "api_endpoint": "/reports/check",
+  "params": {
+    "transaction_id": 15
   }
 }
 ```

@@ -1,0 +1,21 @@
+app = "finance-bot-CHANGE_ME"
+primary_region = "iad"
+
+[build]
+  dockerfile = "docker/Bot.Dockerfile"
+
+[env]
+  SECRETS = "/run/secrets/bot_credentials"
+
+[processes]
+  bot = "/bin/sh -lc 'mkdir -p /run/secrets \
+    && printf "%s" "$BOT_CREDENTIALS_JSON" > /run/secrets/bot_credentials \
+    && python main.py'"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Defina o secret BOT_CREDENTIALS_JSON com o conteúdo JSON do bot/secrets/secret.json
+

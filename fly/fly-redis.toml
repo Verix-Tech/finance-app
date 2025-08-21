@@ -1,0 +1,22 @@
+app = "finance-redis"
+primary_region = "iad"
+
+[build]
+  image = "redis:7-alpine"
+
+[env]
+  # Sem auth no compose original; considere habilitar requirepass se necessário
+
+[processes]
+  redis = "redis-server --appendonly yes"
+
+[[services]]
+  internal_port = 6379
+  protocol = "tcp"
+  processes = ["redis"]
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+

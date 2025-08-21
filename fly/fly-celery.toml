@@ -1,0 +1,31 @@
+app = "findash-celery"
+primary_region = "iad"
+
+[build]
+  dockerfile = "docker/Celery.Dockerfile"
+
+[env]
+  DATABASE = "postgres?sslmode=require"
+  DATABASE_ENDPOINT = "db.aggrpurbcmasqsfppnyb.supabase.co"
+  DATABASE_USERNAME = "postgres"
+  DATABASE_PASSWORD = "/run/secrets/postgres_pass"
+  DATABASE_PORT = "5432"
+
+  SECRET_KEY = "/run/secrets/secret_key"
+  ADMIN_PASSWORD = "/run/secrets/admin_password"
+  ADMIN_USERNAME = "jvict"
+  ADMIN_EMAIL = "admin@example.com"
+  ADMIN_FULL_NAME = "Admin User"
+
+  REDIS_SERVER = "redis://finance-redis.internal:6379"
+
+[processes]
+  worker = "/bin/sh -lc 'mkdir -p /run/secrets && printf \"%s\" \"$POSTGRES_PASSWORD_VALUE\" > /run/secrets/postgres_pass && printf \"%s\" \"$SECRET_KEY_VALUE\" > /run/secrets/secret_key && printf \"%s\" \"$ADMIN_PASSWORD_VALUE\" > /run/secrets/admin_password && make -C /api start_celery'"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Defina os secrets: POSTGRES_PASSWORD_VALUE, SECRET_KEY_VALUE, ADMIN_PASSWORD_VALUE
+

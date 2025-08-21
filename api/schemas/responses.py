@@ -31,3 +31,7 @@ class LimitCheckResponse(BaseModel):
 
 class ListAllCardsResponse(BaseModel):
     cards: List[Dict[str, Any]] = Field(..., description="List of cards")
+
+
+class ListTransactionResponse(BaseModel):
+    transaction: List[Dict[str, Any]] = Field(..., description="List of transaction")

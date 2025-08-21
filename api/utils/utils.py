@@ -56,7 +56,7 @@ def make_where_string(filter: dict) -> str:
     """
     conditions = []
     for key, value in filter.items():
-        conditions.append(f"{key} {value["operator"]} '{value["value"]}'")
+        conditions.append(f"{key} {value['operator']} {repr(value['value'])}")
 
     return " and ".join(conditions)
 

@@ -3,56 +3,22 @@ import uuid
 import time
 import utils.utils as utils
 from datetime import datetime
-from config.config import SQLDBConfig, BotConfig, NoSQLDBConfig, UserCache
+from config.config import SQLDBConfig, BotConfig, NoSQLDBConfig
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from typing import Optional
+
+from bot.core.logging_config import configure_logging
+from bot.core.cache import user_cache
+from bot.services.user_service import check_user_exists
 
 
 ## TODO:
 # - [ ] Refatorar o código
 
-def configure_logging():
-    """Configure application logging."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler("logs/bot.log"),
-            logging.StreamHandler()
-        ]
-    )
-
 configure_logging()
 logger = logging.getLogger(__name__)
 
-# Global user cache instance
-user_cache = UserCache()
-
-def check_user_exists(user_id: int) -> bool:
-    """Check if user exists, using cache to avoid repeated API calls"""
-    user_id_str = str(user_id)
-    # Check cache first
-    cached_result = user_cache.get(user_id_str)
-    if cached_result is not None:
-        logger.info(f"User {user_id} existence status found in cache: {cached_result}")
-        return cached_result
-    
-    # If not in cache, make API request
-    logger.info(f"User {user_id} not in cache, checking API")
-    response = SQLDBConfig().send_request(
-        endpoint="/users/exists",
-        endpoint_var="",
-        method="post",
-        params={"platform_id": user_id_str}
-    )
-    exists = response.status_code not in (502, 404)
-    
-    # Cache the result
-    user_cache.set(user_id_str, exists)
-    logger.info(f"Cached user {user_id} existence status: {exists}")
-    
-    return exists
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.message:
@@ -255,6 +221,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("\n" + open("messages/limits.txt", "r", encoding="utf-8").read().format(mensagem_limites))
             else:
                 await update.message.reply_text("\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+
+        elif endpoint == "/reports/check":
+            if db_response.status_code == 200:
+                data = db_response.json().get("data", {})
+                installment_payment = "Sim" if data.get("installment_payment", False) else "Não"
+                transaction_date = datetime.strptime(data.get("transaction_timestamp", ""), "%Y-%m-%dT%H:%M:%S-03:00").strftime("%d/%m/%Y")
+                
+                await update.message.reply_text(open("messages/check_transaction.txt", "r", encoding="utf-8").read().format(
+                    data.get("transaction_id", ""),
+                    data.get("transaction_type", ""),
+                    data.get("transaction_revenue", ""),
+                    data.get("payment_description", ""),
+                    data.get("payment_category_name", ""),
+                    data.get("payment_method_name", ""),
+                    data.get("card_name", ""),
+                    transaction_date,
+                    installment_payment,
+                    data.get("installment_number", "")
+                ))
+            else:
+                await update.message.reply_text("\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
+
         else:
             await update.message.reply_text("\nDesculpe, não consegui processar sua solicitação. Por favor, tente novamente.")
 

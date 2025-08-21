@@ -1,7 +1,7 @@
 import io
 import logging
 from typing import Dict, Any, Optional
-from workers.main import generate_extract, limit_check, limit_check_all, get_user_info, list_all_cards
+from workers.main import generate_extract, limit_check, limit_check_all, get_user_info, list_all_cards, check_transaction
 from utils.utils import get_limits
 from config.settings import settings
 
@@ -143,4 +143,20 @@ class CeleryService:
 
         except Exception as e:
             logger.error(f"Failed to list all cards: {e}")
+            raise e
+        
+    @staticmethod
+    def check_transaction(client_id: str, transaction_id: str) -> Dict[str, Any]:
+        """Check transaction."""
+        try:
+            result = check_transaction.apply(
+                kwargs={"client_id": client_id, "transaction_id": transaction_id}
+            ).get()
+
+            logger.info("Celery task completed successfully")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to check transaction: {e}")
             raise e

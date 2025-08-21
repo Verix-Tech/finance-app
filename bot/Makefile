@@ -2,10 +2,10 @@ include .env
 export
 
 run:
-	watchmedo auto-restart --directory=. --pattern=*.py --recursive -- python main.py
+	PYTHONPATH=.. watchmedo auto-restart --directory=. --pattern=*.py --recursive -- python main.py
 
 run_debug:
-	python main.py
+	PYTHONPATH=.. python main.py
 
 run_test:
 	python test_accuracy.py

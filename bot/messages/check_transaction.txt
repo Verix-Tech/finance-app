@@ -1,0 +1,11 @@
+Aqui está a transação {0}:
+
+💰 Tipo: {1}
+💵 Valor: R$ {2}
+🏊 Descrição: {3}
+🎮 Categoria: {4}
+🪪 Cartão: {5}
+❓ Método de pagamento: {6}
+📅 Data: {7}
+💲 Parcelado: {8}
+📑 Parcelas: {9}

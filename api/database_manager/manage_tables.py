@@ -81,6 +81,7 @@ def create_users():
                 username=getenv("ADMIN_USERNAME") or "",
                 email=getenv("ADMIN_EMAIL") or "",
                 full_name=getenv("ADMIN_FULL_NAME") or "",
+                phone=getenv("ADMIN_PHONE") or "",
                 disabled=False,
                 password=_get_password(),
             )
